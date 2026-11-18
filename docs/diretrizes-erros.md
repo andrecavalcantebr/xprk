@@ -109,13 +109,12 @@ propaga a falha, não devolve `false`.
 
 ## 7. Diagnósticos e o catálogo
 
-- `XPR_DIAG_LIST` em `src/xpr.h` é a fonte única de códigos, identificadores
-  públicos, severidades, mensagens e dicas (spec 7).
-- Os nomes semânticos da spec (`empty-block`, `builtin-redefinition`,
-  `file-not-found`, `recursive-include`, `type-mismatch`,
-  `undefined-identifier`, `lvalue-in-closure`, `arity-mismatch`,
-  `syntax-error`) descrevem
-  **condições**; o identificador público vem do catálogo.
+- O catálogo é o módulo keel `xpr/diag.k` (`import xpr.diag;`): conjunto
+  `tags Diag` + tabela `DiagEntry`, a fonte única de códigos, identificadores
+  públicos, severidades, mensagens e dicas (spec 10; Seção 1 de
+  diretrizes-diagnosticos.md).
+- As tabelas da spec 10 nomeiam **condições**; o identificador público vem da
+  linha do catálogo.
 - Erros capturáveis entram no catálogo com sua mensagem — é ela que vira
   `last_error` quando um interno falha.
 - O fluxo completo de relato (stderr único, arquivo:linha:coluna em pontos,
@@ -135,14 +134,15 @@ propaga a falha, não devolve `false`.
 ## 9. Decisões abertas
 
 - Tamanho do buffer de `last_error` (proposta: 256 bytes, truncando com `...`).
-- Numeração do código de `outcome.fail` (proposta: reutilizar o enum do
-  catálogo).
+- ~~Numeração do código de `outcome.fail`~~ resolvida pelo catálogo: o `i32`
+  do `outcome` carrega o valor do tag (`Diag`), como `corot.tag` lê.
 - Representação de `xpr_Value` (união etiquetada) — merece documento próprio
   quando o codegen começar.
 
 ## 10. Ordem sugerida de implementação
 
-1. Catálogo `XPR_DIAG_LIST` em `src/xpr.h`; derivar `XprErrorCode`/`XPR_DIAG_TABLE`.
+1. Catálogo: módulo `xpr/diag.k` — `tags Diag`, `DiagEntry` e tabela (fonte
+   única; diretrizes-diagnosticos.md, Seção 1).
 2. Lexer + `--lex-dump` (suíte `tests/` lexer).
 3. Parser/AST + `--parse-dump`; rejeições de análise: bloco vazio, sobra de
    origem, alvos de

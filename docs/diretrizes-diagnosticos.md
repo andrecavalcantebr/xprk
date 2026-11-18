@@ -1,6 +1,6 @@
 <!--
    FILE: diretrizes-diagnosticos.md
-   DESC: Implementation guidelines for the XPR diagnostic reporting flow (catalog, format, exit codes).
+   DESC: Implementation guidelines for the XPR diagnostic reporting flow (catalog module, format, exit codes).
    AUTHOR: Andre Cavalcante with AI partner
    DATE: November, 2026
    LICENSE: GPL-v3
@@ -15,21 +15,41 @@ erros **capturáveis** em tempo de execução (`try`/`fail`/`last_error`) é ass
 de [diretrizes-erros.md](diretrizes-erros.md); este documento cobre o que é
 **relatado**: tudo que passa pelo stderr e decide o status de saída.
 
-## 1. Fonte única: o catálogo
+## 1. Fonte única: o catálogo é um módulo keel
 
-- `XPR_DIAG_LIST` em `src/xpr.h` é a única definição de códigos de diagnóstico,
-  identificadores públicos, severidades, modelos de mensagem e dicas.
-  `XprErrorCode` e `XPR_DIAG_TABLE` são **derivados** do catálogo por macro —
-  nunca escritos à mão, nunca duplicados em outro documento.
-- Os nomes usados na especificação (`empty-block`, `builtin-redefinition`,
-  `file-not-found`, `recursive-include`, `type-mismatch`,
-  `undefined-identifier`, `lvalue-in-closure`, `syntax-error`) nomeiam
-  **condições semânticas**; o catálogo define o identificador público e a
-  apresentação. Uma condição exigida e ausente do catálogo é tarefa de
-  implementação pendente, não uma permissão.
-- Campos sugeridos por entrada do catálogo: código interno, identificador
-  público (kebab-case, estável — é ele que aparece entre colchetes), severidade
-  (`error` | `warning` | `info`), modelo de mensagem, dica opcional.
+- O catálogo mora no módulo `xpr/diag.k` (`module xpr.diag;`), consumido por
+  `import xpr.diag;`. Keel não tem cabeçalho escrito à mão: a interface de cada
+  módulo (os `.h`) é gerada pelo `cgen`, e `pub`/`priv` decidem o que atravessa.
+- O conjunto fechado de códigos é um `tags Diag` — um tag por linha das tabelas
+  da Seção 10 da especificação, com valor explícito e estável. Um conjunto de
+  tags gera um enum C **com identidade de tipo**: código de diagnóstico não se
+  mistura com qualquer `i32` em silêncio — o mesmo argumento de `corot.Status`
+  na base do keel contra `typedef i32`.
+- A tabela é um `typedef struct DiagEntry` + `array DiagEntry table[N]`. **A
+  linha é a fonte única**: cada linha liga a constante do conjunto, o
+  identificador público (kebab-case, estável — é ele que aparece entre
+  colchetes), a severidade (`error` | `warning` | `info`), o modelo de mensagem
+  e a dica opcional. Não há macro X, nada é derivado por preprocessor, nada é
+  duplicado em outro documento.
+- Transporte: `outcome` carrega o código como `i32` (`outcome.fail(r, código)`);
+  o tag é uma **leitura**, não o transporte — o precedente é `corot.tag`. O
+  relato final resolve a linha por busca no código e formata.
+- `match` sobre `tagged Diag void` dá despacho **exaustivo verificado pelo
+  cgen** quando um tratamento por código for necessário. Severidade e mensagem,
+  porém, vêm da linha da tabela — `match` não substitui o dado.
+- **Nota de versão** (cgen v0.2.0, verificado em probe): constante de `tags`
+  qualificado **entre módulos** (`diag.Diag.SIZE_MISMATCH`) ainda não é baixado
+  ao nome C; dentro do próprio módulo, baixa correto. Até a correção no keel,
+  pontes derivadas cruzam módulos com o padrão `pub constexpr i32 ERR_X = X;`
+  (o caminho de `coll.EMPTY`, golden 007) — o conjunto continua sendo a fonte.
+- **Runtime**: o programa gerado também precisa dos códigos em execução, e a
+  especificação (Seção 9) manda a transpilação sair em **um único `.k`**. O
+  gerador injeta no arquivo gerado os tags e a tabela que ele mesmo usa — a
+  cópia nasce do mesmo módulo, nunca editada à mão. É a "biblioteca em código
+  host" da terceira categoria de R12.
+- As tabelas da Seção 10 nomeiam **condições semânticas**; o catálogo define o
+  identificador público e a apresentação. Uma condição exigida e ausente do
+  catálogo é tarefa de implementação pendente, não uma permissão.
 
 ## 2. Formato do relato
 
@@ -50,7 +70,7 @@ de [diretrizes-erros.md](diretrizes-erros.md); este documento cobre o que é
 
 ## 3. Fases e política de parada
 
-- **Análise (lex, parse, carga de `include`) é stop-the-world**: o primeiro
+- **Análise (lex, parse, resolução de `import`) é stop-the-world**: o primeiro
   `error` encerra a fase; não há acumulação, não há geração de `.k`. Erros de
   sintaxe são detectados até dentro de corpos de função nunca chamados.
 - **Geração**: erros do gerador seguem o mesmo fluxo — primeiro `error` para
@@ -80,14 +100,14 @@ especificação ("status diferente de zero").
 - Um único ponto do processo escreve no stderr e decide o status final.
 - Efeitos já realizados (saída impressa, arquivos escritos) não são desfeitos.
 
-## 6. Localização através de `include`
+## 6. Localização através de `import`
 
-- A colagem textual apaga as fronteiras de arquivo; o carregador precisa manter
-  um **mapa de origem** (pilha de inclusões) para que um erro em arquivo
-  carregado aponte para `arquivo-incluído.x:linha:coluna` — não para a posição
-  do `include`.
-- A pilha de inclusões é a mesma que detecta `recursive-include`; um só
-  mecanismo serve aos dois.
+- `import` não cola texto: cada arquivo importado é analisado como unidade
+  própria, e um erro no seu corpo aponta para
+  `arquivo-importado.x:linha:coluna` **naturalmente** — não há mapa de origem
+  a manter, porque não há colagem que apague fronteiras.
+- A pilha de importações em resolução continua necessária para detectar
+  `recursive-import`: o ciclo é da análise (a dependência), não da posição.
 
 ## 7. Decisões abertas
 
@@ -97,13 +117,16 @@ especificação ("status diferente de zero").
 - `-Wno-<id>` / `-Werror` na CLI do xpr.
 - Tradução de mensagens (hoje: português na spec, inglês no código — catálogo
   define o idioma final das mensagens).
+- Correção do cgen (baixa de constante `tags` entre módulos) versus pontes
+  `constexpr` permanentes — reavaliar quando o keel upstream mudar.
 
 ## 8. Checklist mínimo
 
-1. `XPR_DIAG_LIST` + derivações (`XprErrorCode`, `XPR_DIAG_TABLE`) em
-   `src/xpr.h`.
+1. Módulo `xpr/diag.k`: `tags Diag` + `DiagEntry` + tabela (fonte única;
+   pontes `constexpr` enquanto o cgen não corrigir a baixa entre módulos).
 2. Ponto único de relato (stderr, formato da Seção 2, sanitização).
 3. Colunas em pontos Unicode do lexer até o relato.
-4. Mapa de origem da pilha de `include`.
+4. Pilha de importações com detecção de `recursive-import`.
 5. Status de saída 0/1/2.
-6. Suíte de testes golden com saídas de diagnóstico literais (`tests/`).
+6. Injeção dos tags e da tabela no `.k` gerado (runtime, arquivo único).
+7. Suíte de testes golden com saídas de diagnóstico literais (`tests/`).

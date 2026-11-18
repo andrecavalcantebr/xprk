@@ -477,3 +477,50 @@ R2), e é por isso que `list(n)(f)` existe.
   catálogo vira `src/xpr.k` de vez antes da implementação.
 - `xpr-stdlib-spec.md` (terceiro normativo) e diretório de busca em §9: só
   quando a stdlib começar.
+## 2026-11-20 (c) — Catálogo de diagnósticos vira módulo keel (probe validado)
+
+> Decisão do usuário: keel não tem `.h` escrito à mão — o idiomático é
+> `import module`. Diretrizes de diagnóstico atualizadas (aceite explícito);
+> spec §10 e tooling ficaram pendentes de aceite (ver fim).
+
+### Probe empírico (tmp/diagprobe/, verde de ponta a ponta)
+
+- `xpr/diag.k` = `module xpr.diag;` com `pub tags Diag [OK=0, ...]` → enum C
+  **com identidade de tipo** (precedente e argumento de `corot.Status` contra
+  `typedef i32`); `typedef struct DiagEntry` + `array DiagEntry table[N]` com
+  a linha ligando {constante, id público, severidade, mensagem} — **a linha é
+  a fonte única**, sem macro X. Headers de interface gerados pelo cgen.
+- Consumo: `import xpr.diag as diag types;` + `outcome` (código viaja como
+  i32; `else` na declaração; objeto sem `&`). `match` sobre
+  `tagged Diag void` = despacho exaustivo verificado pelo cgen.
+- **Bug do cgen v0.2.0-14**: constante de `tags` qualificado ENTRE módulos não
+  é baixado ao nome C (`diag.Diag.SIZE_MISMATCH` sai `xpr_diag_Diag.SIZE_...`).
+  Dentro do módulo, correto. Contorno validado: ponte `pub constexpr i32
+  ERR_X = X;` (padrão `coll.EMPTY`, golden 007). Reportar/corrigir no keel.
+- Lições de estilo keel do probe: `typedef struct` (struct puro não atravessa
+  interface), `M.Set.CONST` fora do módulo, sem `usize` (usar `size_t`),
+  `outcome.fail(r, código)` sem `&`, `else` preso à declaração com
+  inicializador.
+
+### Diretrizes alteradas (aceitas)
+
+- `docs/diretrizes-diagnosticos.md`: §1 reescrito (catálogo = módulo keel;
+  transporte por outcome; nota de versão cgen + pontes; injeção da tabela no
+  `.k` gerado p/ runtime sob a regra do arquivo único — terceira categoria de
+  R12); §3 `include`→`import`; §6 reescrito (`import` não cola texto — não há
+  mapa de origem; pilha só para `recursive-import`); §7 + decisão aberta da
+  correção do cgen; §8 checklist (módulo + injeção).
+- `docs/diretrizes-erros.md`: §7 e §10.1 apontam ao módulo (spec 10);
+  §9 "numeração do outcome.fail" marcada resolvida (i32 carrega o valor do
+  tag, como `corot.tag`).
+
+### Pendências (aceite ainda não dado)
+
+- **Spec §10** (normativo): trocar "catálogo `XPR_DIAG_LIST` em `src/xpr.k`"
+  pelo módulo `xpr/diag.k` (tags + tabela, fonte única). Redação pronta.
+- **Tooling**: `tests/run_tests.sh` (CATALOG) e `tests/README.md:62` ainda
+  apontam `src/xpr.h`.
+- **Podridão era-`include` em diretrizes-erros.md** (não tocada, fora do
+  escopo aceito): l.127-128 ("todo include já foi colado textualmente... sem
+  módulos" — hoje é `import`), l.130 "(spec 8)" (dumps = spec 9), l.150
+  ("carregamento estático de include... recursive-include").
