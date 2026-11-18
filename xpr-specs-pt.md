@@ -891,6 +891,10 @@ Um erro não capturado é relatado uma única vez no stderr. Erros com origem
 incluem nome do arquivo, linha e coluna, com a coluna contada em pontos.
 `call-depth-exceeded` e `step-budget-exceeded` não são capturáveis por `try`.
 
-O catálogo `XPR_DIAG_LIST` em `src/xpr.k` deve espelhar esta lista e é a fonte
-dos identificadores usados pelo código gerado. O projeto de propagação e
-limpeza está em [diretrizes-diagnosticos.md](docs/diretrizes-diagnosticos.md).
+O catálogo desta seção mora no módulo keel `xpr/diag.k`, consumido por
+`import xpr.diag;` — keel não tem cabeçalho escrito à mão; a interface é
+gerada. O conjunto fechado de códigos é um `tags Diag` (um por linha das
+tabelas acima) e a tabela `DiagEntry` liga cada código ao identificador
+público, à severidade e ao modelo de mensagem — fonte única, nada duplicado. O
+projeto de propagação e limpeza está em
+[diretrizes-diagnosticos.md](docs/diretrizes-diagnosticos.md).

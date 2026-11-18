@@ -59,7 +59,7 @@ se espera que satisfaça o novo contrato de diagnósticos negativos.
   quando o xprk passa a produzir o dump).
 - `tests/<suíte>/<caso>.diag` — caso negativo: uma linha com o id do diagnóstico
   esperado no stderr, na forma `[id]`. `--list` falha se o id não constar no
-  catálogo (`src/xpr.h`).
+  catálogo — o módulo `src/xpr/diag.k` (especificação, Seção 10).
 - Temporários do runner moram em `tmp/` do projeto — nunca no `/tmp` do sistema.
 
 ## Formato do dump do lexer (golden)

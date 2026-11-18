@@ -8,14 +8,14 @@
 #
 # Layout: tests/<suite>/<case>.x (input), <case>.expected (golden stdout; a
 # missing golden is PENDING, not failure), <case>.diag (negative case: expected
-# diagnostic id, which must exist in the catalog src/xpr.h or --list fails).
+# diagnostic id, which must exist in the catalog module src/xpr/diag.k or --list fails).
 # Temporaries go to <root>/tmp/ — never the system /tmp.
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$ROOT/tmp"
-CATALOG="$ROOT/src/xpr.h"
+CATALOG="$ROOT/src/xpr/diag.k"
 XPR="${XPR:-$ROOT/xprk}"
 
 SUITE="lexer"

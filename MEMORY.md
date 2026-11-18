@@ -524,3 +524,22 @@ R2), e é por isso que `list(n)(f)` existe.
   escopo aceito): l.127-128 ("todo include já foi colado textualmente... sem
   módulos" — hoje é `import`), l.130 "(spec 8)" (dumps = spec 9), l.150
   ("carregamento estático de include... recursive-include").
+## 2026-11-20 (d) — Spec §10 e runner alinhados ao catálogo-módulo; push
+
+- **Spec §10** (aceite do usuário): "O catálogo desta seção mora no módulo keel
+  `xpr/diag.k`, consumido por `import xpr.diag;` — keel não tem cabeçalho
+  escrito à mão; a interface é gerada. O conjunto fechado de códigos é um
+  `tags Diag` (um por linha das tabelas acima) e a tabela `DiagEntry` liga cada
+  código ao identificador público, à severidade e ao modelo de mensagem —
+  fonte única, nada duplicado." `XPR_DIAG_LIST`/`src/xpr.k` não existem mais
+  em nenhum documento.
+- **Runner**: `tests/run_tests.sh` CATALOG → `src/xpr/diag.k` (a checagem é
+  grep no fonte do módulo — os ids são literais de string nas linhas da
+  tabela); `tests/README.md` idem. `--list` segue MISSING-IN-CATALOG por
+  construção (módulo ainda não existe) — comportamento inalterado.
+- `make check-docs` verde (27/27, 32/32). Nenhuma menção a `xpr.h` resta em
+  tests/, docs/ ou spec.
+- Consequência de layout para a implementação: o módulo será `src/xpr/diag.k`
+  (`module xpr.diag;`); o Makefile já cobre (find src -name '*.k' + regra de
+  objeto com subdiretório). Usuário ficou de investigar a correção do bug do
+  cgen (constante `tags` entre módulos) — reprodutor em tmp/diagprobe/.
