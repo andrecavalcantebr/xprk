@@ -21,6 +21,11 @@ justifica, e os identificadores `R<n>` são referenciados entre documentos.
 ## Índice
 
 - [R1. Critérios de admissão](#r1-criterios-de-admissao)
+  - [C1 — Tudo é expressão](#c1--tudo-e-expressao)
+  - [C2 — Regra da simplicidade](#c2--regra-da-simplicidade)
+  - [C3 — Preferência por mecanismos existentes](#c3--preferencia-por-mecanismos-existentes)
+  - [C4 — Falha cedo](#c4--falha-cedo)
+  - [R1.1 O caso `import`: o construto que era um valor disfarçado](#r11-o-caso-import-o-construto-que-era-um-valor-disfarcado)
 - [R2. Tudo é expressão](#r2-tudo-e-expressao)
 - [R3. Seis tipos, imutáveis](#r3-seis-tipos-imutaveis)
   - [R3.1 Três categorias de nome reservado](#r31-tres-categorias-de-nome-reservado)
@@ -38,6 +43,7 @@ justifica, e os identificadores `R<n>` são referenciados entre documentos.
   - [R7.4 O caminho do módulo é metadado, não campo](#r74-o-caminho-do-modulo-e-metadado-nao-campo)
 - [R8. Structs e tuplas: recusadas por ora](#r8-structs-e-tuplas-recusadas-por-ora)
 - [R9. Listas: adiadas](#r9-listas-adiadas)
+  - [R9.1 Lista passa em C1: é valor, logo é expressão](#r91-lista-passa-em-c1-e-valor-logo-e-expressao)
 - [R10. `native` e o `math.h`](#r10-native-e-o-mathh)
 - [R11. Predicados de tipo](#r11-predicados-de-tipo)
 - [R12. Internos versus biblioteca](#r12-internos-versus-biblioteca)
@@ -53,7 +59,32 @@ Justifica: o conjunto da especificação.
 programas funcionais pequenos — inclusive de IA para IA, onde o custo de gerar e
 revisar código domina.
 
-**Critério primário — regra da simplicidade:**
+Os critérios são **filtros em ordem**. Uma proposta que falha em C1 não passa
+para C2: não há trade-off a negociar depois de uma falha categórica.
+
+### C1 — Tudo é expressão
+
+> Se a feature só pode existir como construto — algo que **não devolve valor** e
+> por isso precisa de posição sintática própria —, ela não é XPR.
+
+Este é o critério **primário**, e não a contagem de regras. A ordem importa:
+um construto pode *reduzir* o número de regras e mesmo assim ser recusado, porque
+custo de construto não se mede em regras. Um construto cria, de uma vez:
+
+- uma posição sintática nova, com regra de onde pode e onde não pode aparecer;
+- uma segunda gramática (a de "instruções"), que a §3 não tem;
+- a pergunta "que valor devolve?", que reabre a cada uso;
+- exceções de composição: não compõe com `iif`, não vira argumento, não vira
+  campo de módulo, não é devolvido por função.
+
+**O teste operacional.** Antes de aceitar uma feature, pergunte: *que valor ela
+produz?* Se a resposta for "nenhum, é só um efeito/declaração", a feature está mal
+enquadrada — o mais provável é que exista um valor por trás dela. Encontre o
+valor e a feature passa a ser expressão; não encontre, e ela não entra.
+
+A história de `import` é o caso-escola, e está em R1.1.
+
+### C2 — Regra da simplicidade
 
 > Uma feature entra se reduz ou mantém o número de regras normativas. Se
 > aumenta, só entra quando o caso de uso é comprovado por código real escrito na
@@ -61,27 +92,70 @@ revisar código domina.
 
 O critério é sobre **regras**, não sobre linhas de código nem sobre poder
 expressivo. Uma feature pode valer muitas linhas de implementação e poucas
-regras; o que se mede é quantas decisões normativas novas ela cria.
+regras; o que se mede é quantas decisões normativas novas ela cria. Só se
+aplica **depois** de C1: entre duas features que são expressões, ganha a que
+custa menos regra.
 
-**Critério secundário — preferência por mecanismos existentes.** Se a feature
-pode ser expressa compondo regras que já existem, ela não é uma feature: é um
-idioma. Três exemplos são estruturais neste projeto:
+### C3 — Preferência por mecanismos existentes
+
+Se a feature pode ser expressa compondo regras que já existem, ela não é uma
+feature: é um idioma. Exemplos estruturais neste projeto:
 
 | necessidade | mecanismo já existente | feature evitada |
 | --- | --- | --- |
 | ler campo de módulo | `field_suffix` em `postfix` | acesso qualificado como categoria léxica |
 | despachar por tipo | `iif` preguiçoso + `is_*` | sobrecarga, `dispatch` |
+| escolher função em runtime | `iif` como `atom` + `call_suffix` | construto de despacho (R4.1) |
 | funções de duas entradas | currying por aninhamento de `fn` | segundo parâmetro |
 
-**Critério terciário — falha cedo.** Entre duas semânticas equivalentes,
-prefira a que permite detectar o erro na análise. É o que motiva `import` com
-argumento literal, `field-not-found` estático quando o receptor é identificável,
-e a análise de corpos de função nunca chamados.
+### C4 — Falha cedo
 
-**Como usar este documento numa proposta.** Uma proposta deve declarar:
-(a) qual regra da especificação muda; (b) quantas decisões normativas novas
-cria; (c) qual caso de uso a paga, com código; (d) se contraria alguma recusa de
+Entre duas semânticas equivalentes, prefira a que permite detectar o erro na
+análise. É o que motiva `import` com argumento literal, `field-not-found`
+estático quando o receptor é identificável, e a análise de corpos de função
+nunca chamados.
+
+**Como usar este documento numa proposta.** Uma proposta deve declarar, nesta
+ordem: (a) **que valor a feature produz** — se nenhum, C1 já a rejeita;
+(b) qual regra da especificação muda; (c) quantas decisões normativas novas
+cria; (d) qual caso de uso a paga, com código; (e) se contraria alguma recusa de
 R15, a refutação daquela razão.
+
+### R1.1 O caso `import`: o construto que era um valor disfarçado
+
+Justifica: §1 (`Module`), §3, §4.8; a história completa está em R7.
+
+Enquanto `import` foi pensado como **construto**, três remendos tiveram de entrar
+na linguagem para sustentar algo que não era expressão:
+
+| remendo | por que era necessário | o que era o problema |
+| --- | --- | --- |
+| segundo argumento de alias (`include("lib.x","std")`) | o construto não produzia valor, então o nome tinha de ser dado a ele | um construto precisando de parâmetro para se tornar nomeável |
+| `qualified_name` como classe de literal | o acesso `std.range` não derivava de `postfix`, porque não havia valor à esquerda do ponto | gramática paralela só para nomear |
+| "colado no ambiente léxico do chamador" | o texto entrava no ponto do construto, logo herdava o escopo de quem chamou | dependência de estado oculto, o bug clássico de macro sem hygiene |
+
+Nenhum dos três era um problema de **módulos**. Os três eram sintomas de C1
+violado: um construto sem valor precisa que a linguagem lhe dê nome, caminho de
+acesso e escopo, um por um.
+
+**O valor estava lá desde o começo: uma referência ao módulo.** Reconhecido isso,
+`import` virou `import_expr` que produz um `Module`, e os três remendos
+desapareceram **juntos**, sem substituição:
+
+- o alias virou a variável que recebe o valor;
+- o acesso virou o `field_suffix` que já existia em `postfix`;
+- o escopo virou o do próprio módulo, autocontido por construção (R7.1).
+
+**A lição, que é a razão de C1 ser primário.** O construto não era mais
+"simples" que a expressão: era mais caro. Parecia simples porque escondia o
+valor, e o valor escondido cobrava pedágio em cada lugar onde a linguagem
+precisava falar sobre ele — nome, acesso, escopo. Uma feature "mais simples que
+parece" é o sintoma clássico de valor não identificado.
+
+**Sinal de alarme para propostas futuras.** Se uma proposta pede duas ou mais
+destas coisas ao mesmo tempo — um nome próprio, uma forma de acesso, uma regra
+de escopo, uma posição onde pode aparecer — a causa provável não é a lista de
+pedidos; é que o valor da feature não foi identificado.
 
 ## R2. Tudo é expressão
 
@@ -90,6 +164,12 @@ Justifica: §3 (gramática), §4 (semântica), especialmente §4.6.
 Um programa é uma expressão e cada construto devolve valor. Isso elimina a
 distinção comando/expressão: blocos, `iif`, `for`, `import` e `fn` compartilham
 a mesma regra de composição, e não há uma segunda gramática para "instruções".
+
+**R2 é o alicerce e C1 é o guardião.** R2 descreve o resultado; C1 é o filtro que
+o mantém. Toda feature que entrasse como construto abriria a segunda gramática
+que R2 nega — por isso C1 é categórico e vem antes de qualquer conta de regras.
+O caso `import` (R1.1) mostra o custo de deixar um construto passar: ele cobra
+nome, acesso e escopo, um a um, e cada remendo parece uma feature nova.
 
 **Consequência aceita.** `for` devolve a contagem de iterações, não o valor do
 corpo. A alternativa — devolver o último valor do corpo — exigiria uma regra
@@ -207,7 +287,7 @@ truncado, mas o efeito prático é o oposto do desejado: o resto do arquivo vira
 comentário silencioso, e o programa compila e roda sem as expressões que o autor
 escreveu depois do `/*`. Um erro de digitação em uma linha desativa
 silenciosamente o resto do programa — exatamente o tipo de falha que o critério
-de falha cedo de R1 manda evitar. A aspa faltante tem o mesmo argumento e por
+de falha cedo (C4) manda evitar. A aspa faltante tem o mesmo argumento e por
 isso a mesma regra.
 
 ### R3.4 Sem anotação de tipo — nem no parâmetro, nem no retorno
@@ -484,6 +564,39 @@ de o núcleo estar de pé. O motivo é de ordem de implementação — `xpr_Valu
 não existe, então uma variante no enum custa uma linha hoje e uma refatoração
 transversal depois do codegen.
 
+### R9.1 Lista passa em C1: é valor, logo é expressão
+
+Justifica: §1 (ausência de listas), R1 (C1), R2.
+
+A pergunta que C1 obriga a fazer antes de qualquer discussão de sintaxe: **que
+valor uma lista produz?** A resposta é imediata — a própria lista, como `42`
+produz `42`. Lista é **tipo de dado**, não construto, e por isso passa em C1 sem
+precisar de exceção alguma:
+
+| | construto (recusado por C1) | lista (aceita) |
+| --- | --- | --- |
+| devolve valor? | não — é efeito/declaração | **sim**, um `List` |
+| posição sintática | própria, com regra de onde cabe | nenhuma nova: é `atom` |
+| compõe com `iif`/`fn`/bloco? | não | **sim**, como qualquer valor |
+| segundo parâmetro? | exigiria construto | não: currying (R4) |
+
+**O ponto que a intuição erra.** `list(n)(f)` *parece* um construtor privilegiado —
+a palavra "construtor" sugere construto. Não é: `list` é um **interno** (§6), uma
+função como `pow`, e `list(n)(f)` é aplicação de função curryficada, coberta
+por `postfix` e R4. Privilegiado é o **fato de existir como interno** (não se
+pode escrever em XPR puro), não sua forma sintática — que é a de qualquer
+chamada. Mesma distinção que separa `print` (interno) de `fn` (forma sintática).
+
+**Nada impede um construtor de listas**, e é por isso que listas não são
+recusadas. O que C1 impede é um construtor que *não devolva valor*: `list { ... }`
+como bloco de inicialização, ou `new l = []` como declaração. A forma aceita é
+a que já existe — literal `[a, b]` como `atom` e `list(n)(f)` como chamada.
+
+**A disciplina que C1 impõe sobre o desenho de listas** é o que explica cada
+linha da tabela abaixo: `l[i]` é `index_suffix` que já existe; a árvore de
+operações é expressão; `for` **não** constrói lista (devolve contagem, R2) —
+daí a necessidade de `list(n)(f)`, e não de um construto de laço.
+
 **O desenho acordado**, para quando entrar:
 
 | aspecto | decisão |
@@ -502,9 +615,11 @@ transversal depois do codegen.
 exige `Boolean` (§4.5). Sem agregação, não há como consumir o resultado de uma
 comparação de listas.
 
-**`list(n)(f)` é o único construtor privilegiado** e não pode ser biblioteca:
-o literal não constrói `n` elementos em execução, e `for` devolve contagem, não
-valores (R2). Sem ele, não há como montar uma lista de tamanho dinâmico.
+**`list(n)(f)` é o único interno privilegiado de construção** — interno, não
+construto: é chamada curryficada (R9.1). Não pode ser biblioteca porque o
+literal não constrói `n` elementos em execução e `for` devolve contagem, não
+valores (R2). Sem ele, não há como montar uma lista de tamanho dinâmico — e a
+alternativa seria exatamente o construto de laço que C1 proíbe.
 
 ## R10. `native` e o `math.h`
 
@@ -634,7 +749,8 @@ a razão registrada. Sem refutação, a resposta é a da tabela.
 | tuplas e registros literais | `{` já é bloco; ~7 decisões novas (R8) | R8 |
 | broadcast em operadores de lista | duas regras em vez de uma (R9) | R9 |
 | slice, `+` entre listas, append, mutação | fora do desenho acordado (R9) | R9 |
-| construção de lista sem construtor | impossível em runtime (R9) | R9 |
+| construção de lista sem `list(n)(f)` | `for` devolve contagem e o literal não constrói em runtime (R9, R9.1) | R9.1 |
+| construtor de lista como construto (`list { ... }`, `new l = []`) | viola C1: precisa devolver valor (R9.1) | R9.1 |
 | `native("...")` | ABI, protocolo de erro, arena (R10) | R10 |
 | `dispatch(tipo, expr)` | `is_*` + `iif` cobre (R11) | R4, R11 |
 | tag de tipo acessível / operador de tipo | `is_*` é suficiente (R11) | R11 |

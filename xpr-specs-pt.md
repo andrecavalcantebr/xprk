@@ -3,6 +3,12 @@
 XPR é uma linguagem orientada a expressões: cada construto devolve um valor. Um
 programa é uma expressão. Não há comandos.
 
+**Não existe construto sem valor.** Toda forma sintática da linguagem — `fn`,
+`iif`, `for`, `try`, `import`, bloco — é uma expressão e produz valor. Uma
+feature que só pudesse existir como construto (efeito sem valor, declaração)
+não pertence à linguagem; é o primeiro critério de admissão (C1 em
+[xpr-rationale.md](xpr-rationale.md#c1--tudo-e-expressao)).
+
 Este documento contém **definições** — o que a linguagem é. As **razões** de cada
 regra e as alternativas recusadas estão em [xpr-rationale.md](xpr-rationale.md),
 o segundo documento normativo: ele decide a admissão de mudanças futuras
@@ -54,6 +60,11 @@ Seis tipos. Todos os valores são imutáveis.
 Não existe tipo `char`: um caractere é uma `String` de comprimento 1. Não
 existem tuplas, registros nem tipos definidos pelo usuário. A razão desta
 lista fechada está em R3; as recusas correspondentes, em R8 e R15.
+
+**Todo tipo novo é valor, e todo valor é expressão.** Um tipo de dado que entre
+na linguagem — inclusive `List` (R9) — segue C1: aparece como literal, é
+produzido por interno e participa de qualquer expressão. Não existe tipo que só
+seja criado por um construto, nem que precise de posição sintática própria.
 
 **Não há anotação de tipo na sintaxe.** Nenhum construto declara tipo: nem `fn`
 (`fn(x: Integer)`, `fn: Boolean(...)`), nem variável, nem parâmetro, nem retorno,
@@ -429,7 +440,8 @@ f = fn(x){ y = x; print(y); };   // ok
 
 - Condição inicial falsa devolve `0`.
 - Os valores de `init`, `corpo` e `step` são descartados; o resultado é sempre
-  uma contagem (`Integer`, zero ou positiva).
+  uma contagem (`Integer`, zero ou positiva). `for` **não** constrói coleções;
+  acumular é trabalho de `list(n)(f)` e `fold` (R9, R9.1).
 - `cond` deve ser `Boolean` (`type-mismatch` caso contrário).
 - Um erro de avaliação aborta o loop sem produzir resultado.
 

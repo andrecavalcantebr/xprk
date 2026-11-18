@@ -145,3 +145,28 @@ todas as mudanças são normativas ou de fixtures.
   `.diag` falha a listagem. `make test` segue vermelho por construção (fase TDD).
 - **Pendência sugerida, não feita**: `tools/check-docs.sh` rodando as duas verificações
   (índice↔headings; `R<n>` citado na spec existe no rationale) junto de `make tests`.
+
+## 2026-11-19 — C1 "tudo é expressão" é o critério PRIMÁRIO de admissão
+
+- **Ponto do usuário**: nos critérios de admissão, o primeiro é **TUDO É EXPRESSÃO** — uma feature que entra como construto especial **não é XPR**. R1 estava com "regra da simplicidade" como critério primário, o que é a ordem errada: um construto pode **reduzir** o número de regras e ainda assim ser recusado, porque custo de construto não se mede em regras.
+- **R1 reescrito com critérios em ORDEM (filtros, não trade-off)**: **C1** Tudo é expressão (categórico) → **C2** regra da simplicidade → **C3** mecanismos existentes → **C4** falha cedo. Uma proposta que falha em C1 não passa para C2.
+- **O que C1 enumera**: um construto cria de uma vez (a) posição sintática nova, (b) segunda gramática, a de "instruções", que §3 não tem, (c) a pergunta recorrente "que valor devolve?", (d) exceções de composição (não compõe com `iif`, não vira argumento/campo/retorno).
+- **Teste operacional que C1 fixa**: *que valor a feature produz?* Se "nenhum, é só efeito/declaração", está mal enquadrada — provavelmente existe um valor por trás. Ache o valor e vira expressão; não ache, não entra.
+- **Nova R1.1 documenta `import` como caso-escola**: enquanto foi construto, exigiu **três remendos** — segundo argumento de alias, `qualified_name` como classe de literal, e semântica "colado no ambiente léxico do chamador". Nenhum era problema de módulos: os três eram sintomas de C1 violado (construto sem valor precisa que a linguagem lhe dê nome, acesso e escopo, um a um). Reconhecido que `import` produz uma **referência ao módulo**, os três caíram **juntos, sem substituição**. Lição registrada: o construto não era mais simples, era mais caro disfarçado.
+- **Sinal de alarme em R1.1**: proposta que pede 2+ de {nome próprio, forma de acesso, regra de escopo, posição sintática} ao mesmo tempo ⇒ a causa provável é que o **valor da feature não foi identificado**.
+- **Novo bloco em R2**: "R2 é o alicerce e C1 é o guardião" — R2 descreve o resultado, C1 é o filtro que o mantém.
+- **Spec**: novo parágrafo no topo ("**Não existe construto sem valor**", com link para C1). TOC do rationale: 29 entradas (C1–C4 agora entram no índice), 0 quebradas.
+- **`tools/check-docs.sh` (novo)** + alvo `make check-docs` (ligado a `make test`): valida (1) todo link de índice resolve, (2) todo heading de seção está no índice, só títulos numerados `N.`/`N.M`/`R<n>`/`C<n>`; ignora "Índice" e prosa, (3) todo `R<n>` citado na spec existe no rationale, (4) links cruzados entre os dois docs. **Testado com falhas plantadas** (link quebrado + heading órfão + R inexistente): acusa as três e sai 1; restaurado, sai 0.
+- **Bug de convenção que o checker expôs**: âncora tem de ser ASCII-folded **descartando** pontuação, não convertendo em hífen — `C1 — Tudo é expressão` → `c1--tudo-e-expressao` (dois hífens), não `c1---tudo-...`. O checker pegou isso na primeira execução.
+- **`README.md` reescrito**: estava desatualizado desde o pivô (dizia "Interpretador", "carregamento dinâmico de expressões", `xpr-specs.md`, e não mencionava o rationale). Agora: transpilador, dois normativos com a divisão, `make check-docs`, estrutura real.
+
+## 2026-11-19 (b) — Lista passa em C1: "nada impede um construtor de listas"
+
+- **Confirmação do usuário**: "tudo é expressão" é a característica **primária** de XPR — é o que a torna extremamente simples. Qualquer tipo de dado que entrar segue essa regra, **inclusive list**. E "nada impede um construtor de listas".
+- **Nova R9.1 — `Lista passa em C1: é valor, logo é expressão`**: lista é **tipo de dado**, não construto: produz valor (a própria lista), entra como `atom`, não cria posição sintática nova, compõe com `iif`/`fn`/bloco. Tabela comparando construto (recusado) × lista (aceita) em quatro linhas: devolve valor / posição sintática / composição / segundo parâmetro.
+- **Correção de terminologia importante**: `list(n)(f)` *parece* construtor privilegiado porque a palavra "construtor" sugere construto. **Não é construto** — `list` é **interno** (§6), como `pow`, e `list(n)(f)` é aplicação curryficada coberta por `postfix` + R4. O que é privilegiado é **existir como interno** (não se pode escrever em XPR puro), não a forma sintática. Mesma distinção que separa `print` (interno) de `fn` (forma sintática). Terminologia de R9 ajustada para "único interno privilegiado de construção".
+- **O que C1 de fato proíbe em listas**: construtor que **não devolva valor** — `list { ... }` como bloco de inicialização, `new l = []` como declaração. A forma aceita é a que já existe: literal `[a, b]` como `atom` + `list(n)(f)` como chamada.
+- **A disciplina que C1 impõe ao desenho de listas** explica cada linha da tabela de R9: `l[i]` reusa `index_suffix`; a árvore de operações é expressão; **`for` não constrói lista** (devolve contagem, R2) — daí a necessidade de `list(n)(f)` e não de um construto de laço.
+- **Spec**: §1 ganhou "**Todo tipo novo é valor, e todo valor é expressão**" (inclusive `List`, R9) — nenhum tipo criado só por construto, nenhum precisando de posição sintática própria. §4.6 explicita "`for` **não** constrói coleções; acumular é trabalho de `list(n)(f)` e `fold` (R9, R9.1)".
+- **R15**: 2 linhas novas — "construção de lista sem `list(n)(f)`" (reformulada) e "construtor de lista como construto (`list { ... }`, `new l = []`) ⇒ viola C1".
+- **TOC**: 30 entradas no rationale, 0 quebradas. `make check-docs` verde.

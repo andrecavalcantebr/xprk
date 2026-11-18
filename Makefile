@@ -58,9 +58,14 @@ genc:
 run: $(PRJ)
 	./$(PRJ)
 
-test tests: keel-check $(PRJ)
+test tests: keel-check check-docs $(PRJ)
 	@[ -f tests/run_tests.sh ] || { echo "tests/run_tests.sh not created yet"; exit 2; }
 	bash tests/run_tests.sh
+
+# integrity of the two normative documents (indexes, cross-refs); no compile
+check-docs:
+	@[ -f tools/check-docs.sh ] || { echo "tools/check-docs.sh missing"; exit 2; }
+	@bash tools/check-docs.sh
 
 clean:
 	rm -rf $(OBJDIR) $(GENDIR) $(PRJ)
@@ -76,4 +81,4 @@ keel-sync:
 cleantmp:
 	bash tools/clean-tmp.sh
 
-.PHONY: all vars genc run test tests clean cleantmp keel-check keel-sync
+.PHONY: all vars genc run test tests clean cleantmp check-docs keel-check keel-sync
