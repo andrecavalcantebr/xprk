@@ -10,7 +10,7 @@
 
 Este documento descreve a **estratégia de implementação** do modelo de erros do
 XPR (`try`/`fail`/`last_error`). A semântica normativa está em
-[xpr-specs-pt.md](../xpr-specs-pt.md), seções 4.11, 5 e 7 — em caso de conflito, a
+[xpr-specs-pt.md](../xpr-specs-pt.md), seções 4.5, 4.7, 6.7 e 8 — em caso de conflito, a
 especificação prevalece.
 
 O transpilador é escrito em keel e gera código keel: o modelo abaixo vale para
@@ -89,7 +89,7 @@ xpr_Value xpr_builtin_fail(xpr_Value msg) {
   fluxo comum de `outcome`: usam uma **flag fatal global** (ou marcador distinto
   no `outcome`), verificada nos sites de `try` **antes** da conversão para
   `false` — se fatal, segue propagando até o envoltório/relato.
-- Consequência: ninguém captura limite por acidente (spec 4.11).
+- Consequência: ninguém captura limite por acidente (spec 4.7).
 
 ## 5. Arenas e limpeza
 
@@ -97,7 +97,7 @@ xpr_Value xpr_builtin_fail(xpr_Value msg) {
   é retorno normal, os defers correm em ordem reversa em todos os caminhos.
 - **Watermark**: o site de `try` salva o watermark da arena no início; restaura
   **apenas no caminho de falha** (libera tudo alocado na região protegida). No
-  sucesso, não restaurar — o valor precisa escapar (spec 4.10).
+  sucesso, não restaurar — o valor precisa escapar (spec 8).
 - A cópia do payload (seção 3) é o que permite restaurar a arena sem perder a
   mensagem.
 

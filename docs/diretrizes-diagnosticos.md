@@ -10,7 +10,7 @@
 
 Este documento descreve o **fluxo de relato de diagnósticos** do transpilador
 xprk. A semântica normativa está em [xpr-specs-pt.md](../xpr-specs-pt.md),
-Seção 7 — em caso de conflito, a especificação prevalece. O tratamento de
+Seção 10 — em caso de conflito, a especificação prevalece. O tratamento de
 erros **capturáveis** em tempo de execução (`try`/`fail`/`last_error`) é assunto
 de [diretrizes-erros.md](diretrizes-erros.md); este documento cobre o que é
 **relatado**: tudo que passa pelo stderr e decide o status de saída.
@@ -39,7 +39,7 @@ de [diretrizes-erros.md](diretrizes-erros.md); este documento cobre o que é
 ```
 
 - **Linhas** contam a partir de 1; **colunas contam em pontos Unicode**, não em
-  bytes — a mesma régua do lexer (especificação, Seção 7).
+  bytes — a mesma régua do lexer (especificação, Seção 10).
 - Diagnósticos **sem** localização de origem (erro de invocação, arquivo
   ausente) relatam o arquivo, a operação ou o argumento relevante no lugar da
   posição.

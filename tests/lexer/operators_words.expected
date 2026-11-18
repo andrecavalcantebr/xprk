@@ -1,0 +1,6 @@
+1:1 OP not
+1:5 OP and
+1:9 OP or
+1:12 KEYWORD true
+1:17 KEYWORD false
+2:1 EOF
