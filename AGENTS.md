@@ -45,3 +45,10 @@
 - Leia `MEMORY.md` ao retomar o trabalho no projeto.
 - Distinga decisões de linguagem confirmadas, suposições da suíte de testes, trabalho em progresso e resultados verificados. Binários existentes não provam que as fontes atuais compilem.
 - Ao final da sessão atualize a memória `MEMORY.md`
+
+## Restrições
+- Os documentos normativos são: @xpr-specs-pt.md e @xpr-rationale.md.
+- Nunca altere os normativos sem antes discutir a alteração e o aceite do usuário.
+- Primeiro sempre planeje o que fazer e depois faça a implementação, começando com os casos de teste (se ainda não existirem) e depois o código propriamente falando; compile e gere a saída comparativa aos casos de teste.
+- Sempre teste o que foi feito antes de completar; somente altere os casos de teste sob aceite do usuário.
+- Ao final de uma alteração substancial, realiza commit e solicite autorização para o push
