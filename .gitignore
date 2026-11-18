@@ -1,0 +1,14 @@
+# Build artifacts
+obj/
+gen/
+/xprk
+
+# Generated tooling output (regenerate with ./gen-ccjson.sh)
+/compile_commands.json
+
+# Vendored keel toolchain copy (bin/cgen + lib/base); source of truth lives outside
+/tools/keel/
+
+# Project-local scratch space (clean with: make cleantmp)
+tmp/*
+!tmp/.gitkeep
