@@ -247,3 +247,233 @@ O erro que já aconteceu duas vezes (com `import` e com a "tabela de despacho" e
 valor a lista produz e como ele se compõe com `iif`/`fn`/`for`". A segunda armadilha
 específica de listas: **assumir que `for` constrói** — não constrói (devolve contagem,
 R2), e é por isso que `list(n)(f)` existe.
+
+## 2026-11-20 — Listas: todas as decisões fechadas; escrita da spec pendente
+
+> Sessão de DISCUSSÃO — o usuário pediu "não altere ainda nada". ZERO edições em
+> spec/rationale. Tudo abaixo está DECIDIDO com o usuário; falta só executar o
+> plano do fim desta entrada. (Usuário chamou a sessão de "18/11"; datada 20/11
+> para preservar a ordem cronológica do arquivo.)
+
+### 1. O sétimo tipo
+
+- `List`: sequência homogênea de valores de um mesmo tipo; `[T]` existe SÓ em
+  diagnóstico (nunca sintaxe, nunca `print`). §1 ganha a linha; "Seis tipos" →
+  "Sete tipos".
+- Homogeneidade sob a única promoção: `[1, 2.0]` é `[Real]`; `[1, "a"]` →
+  `type-mismatch`. Vale para o literal E para `list(n)(f)` com `f` polimórfico
+  (checagem dinâmica em execução).
+- `[]` tem tipo `[?]`, compatível com qualquer `[T]`. **Exceção única em §4.2**:
+  atribuir `[]` NÃO fixa o tipo do vínculo; fixa a primeira atribuição de `[T]`
+  concreto. Usuário pediu destaque explícito: "é a primeira exceção a uma regra".
+- `Integer` muda **64 → 32 bits** (só a linha da tabela §1; verificado). Razões:
+  promoção `Integer`→`Real` passa a ser SEMPRE exata (i64 perderia acima de
+  2^53); `int` de C / SIMD 8 lanes. Custo aceito: contagens limitadas a 2^31
+  (`count_reals` de SLM > ~2.1B pesos estoura; leitura por camada segue ok).
+  Hipótese futura anotada: tipo `size` estilo `size_t` para comprimentos.
+
+### 2. Vetorização: uma regra única (recusada a exceção do `==`)
+
+- TODOS os operadores de §5 aplicam a listas elemento a elemento, por UMA regra:
+  comprimentos iguais (senão `size-mismatch`); resultado com o comprimento comum,
+  cada elemento = resultado escalar da tabela §5, listificado. **Recursiva por
+  construção**: elemento lista invoca a mesma regra (`[[1,2]] + [[10,20]]` →
+  `[[11,22]]`); matriz/tensor = lista de listas, sem tipo novo.
+- `==`/`!=` → `[Boolean]`. Usuário RECUSOU `==` estrutural com o argumento dele:
+  "abrimos uma exceção para UMA operação porque parece que simplifica e acabamos
+  com várias exceções adiante". Igualdade estrutural é o **idioma
+  `all(l1 == l2)`**. Registrar recusa em R15.
+- `and`/`or`/`not` vetorizam; exigem `Boolean` por elemento (a exigência vem da
+  §5; sem regra própria — a recursão é só a da regra geral). Unários vetorizam:
+  `-[1,2]` → `[-1,-2]`, `not [true]` → `[false]`.
+- `fn`/`module` propagam o `type-mismatch` escalar por elemento. NaN por
+  elemento: `[NaN] == [NaN]` → `[false]`. Sem broadcast (`2 * [1,2]` →
+  `type-mismatch`, segue R15) — para isso existe `apply`.
+- Distinção para o rationale: operadores **preservam a forma** (recursão da
+  regra geral); `any`/`all` **colapsam** a árvore (recursão própria, porque
+  agregam até `Boolean`).
+
+### 3. Construtores e I/O de dados
+
+- `list(n)(f)` = `[f(0), ..., f(n-1)]`; único interno privilegiado de construção.
+  `f` recebe o ÍNDICE, avaliada em ordem `0..n-1` (efeitos nessa ordem); `n=0` →
+  `[]`; `n<0` → `size-out-of-range`; `n` não-Integer → `type-mismatch`; `f`
+  não-função → `not-callable` (mecanismo existente); arena sem espaço →
+  `allocation-failure`.
+- `read_reals(path)(k)(n)`: `[Real]` com `n` doubles f64 little-endian a partir
+  do ELEMENTO `k` (não bytes — aritmética de offset fica em elementos).
+  Equivale a `list(n)(fn(i){ elemento k+i de p; })`. Erros: `file-not-found`
+  (agora também em EXECUÇÃO — precedente: `undefined-identifier` nas duas fases);
+  `index-out-of-range` (k<0 ou k+n além do fim); `size-out-of-range` (n<0).
+  `path` é String qualquer, computável em runtime: **código é estático
+  (`import` exige literal), dado é dinâmico** — não fura R7.2.
+- `count_reals(path)`: Integer com o nº de f64 do arquivo. "Ler tudo" = idioma
+  `read_reals(p)(0)(count_reals(p))`.
+- Nenhum interno escreve em disco → arquivo imutável durante a execução → cache
+  invisível por (path,k,n) é seguro (nota de implementação, não spec).
+- **Empacotamento** (f32/quantização/headers) = biblioteca futura, sustentada por
+  `bitbuffer`/`bitslice` do keel v1+; entrega o valor como Integer ou Real.
+  REGISTRO: essa biblioteca é código keel no runtime (não XPR puro) — nasce a
+  terceira categoria de R12 (XPR puro / interno da spec / biblioteca keel).
+- Socket/rede: ADIADO com registro (sem semântica de bloqueio/tempo na
+  linguagem). `include` textual REAFIRMADO RECUSADO (higiene R7.1/R1.1); dados
+  estáticos via `import("data.x").campo`; sequência textual via stdin:
+  `list(n)(fn(i){ real(input("")); })`.
+
+### 4. Internos, biblioteca e stdlib
+
+- `len(x)` estendido a indexáveis: pontos de String, elementos de List. Interno
+  polimórfico — precedente: `print`/`string` já aceitam qualquer tipo. (O
+  briefing suspeitava "sem sobrecarga"; usuário decidiu estender.)
+- `at` REBAIXADO a biblioteca: `at = fn(x){ fn(i){ x[i]; }; };` é XPR puro (R12).
+  §6.4 inverte o açúcar: `index_suffix` é a forma primitiva. `s[i]` → String de
+  comprimento 1; `l[i]` → elemento por cópia; somente leitura
+  (`wrong-assignment`); fora de `0..len-1` → `index-out-of-range`.
+- `is_list` entra em §6.6 (R11: um predicado por tipo, agora sete).
+- **Stdlib no roadmap** (decisão do usuário: "vamos ter que fazê-la logo, logo"):
+  doc futuro `xpr-stdlib-spec.md`. Morarão lá: `apply`, `apply2`, `any`, `all`,
+  `map`, `filter`, `fold`, `range`, `identity`, `zeros`, `ones`, `at`, `abs`.
+  Consequências futuras: §9 (diretório de biblioteca na busca) e
+  AGENTS/check-docs reconhecendo o 3º normativo de definições.
+- `print`/`string` de lista: `[1, 2, 3]` — abre `[`, separador `, ` (vírgula +
+  espaço), fecha `]`; vazio `[]`; elementos pelas regras de §6.1/§6.2 (Real usa
+  fmt_*, String sem aspas, aninhamento recursivo). `input` FECHADO: semântica
+  `getline` — lê até `\n` (consumido, não incluso) ou EOF; EOF imediato → `""`
+  (encerra a pendência antiga de §6.1).
+- Representação (nota R14): lista = descritor/vista `{len, ptr}` sobre
+  armazenamento alocado na arena do escopo; deep-copy ao escapar; se o
+  armazenamento já vive na arena de destino, copia-se só o descritor ("muito
+  rápido"). Buffer com capacidade crescente só existe internamente ANTES da
+  lista imutável existir. Operações geram loops C planos → vetorização real
+  pelo compilador (nota de rationale; spec não fala de desempenho).
+
+### 5. Diagnósticos novos (§10, fase execução)
+
+- `size-mismatch` — vetorização com comprimentos desiguais.
+- `size-out-of-range` — `n < 0` em `list(n)(f)` ou `read_reals(p)(k)(n)`.
+- `allocation-failure` — arena sem espaço na construção do valor.
+- `file-not-found` — arquivo de `read_reals`/`count_reals` (id reusado, fase nova).
+
+### Plano de escrita (a executar na próxima sessão)
+
+1. **Spec** (`xpr-specs-pt.md`): §1 ("Sete tipos"; Integer "inteiro de 32 bits,
+   sinalizado"; linha `List`); §3 (`list_literal = "[" [ expression { "," expression } ] "]" ;`
+   em `literal` + prosa: avaliação E→D, homogeneidade/promoção, `[]`/`[?]`,
+   `[ ]`/`,` já são pontuação de §2 — nenhuma regra léxica nova); §4.2 (exceção
+   única do `[]`, com destaque); §4.9 (listas: `l[i]` por cópia; compartilhamento
+   interno invisível); §5 (linha `List ⊗ List` na tabela, células "vetorizado →
+   `[T]`" / "`[Integer]`" / "`[Boolean]`" + bloco **Vetorização** com a regra
+   única e bullets: recursão, escalar cai na tabela, sem broadcast/apply,
+   `all(l1==l2)`, NaN por elemento); §6.1 (formato de lista + input
+   getline/EOF→`""`); §6.4 (heading → "Comprimento, indexação e strings":
+   `len` estendido, `upper`/`lower`, parágrafo **Indexação**, `at`→biblioteca);
+   §6.6 (+`is_list`); §6.8 NOVO "Listas: construção e leitura de dados"
+   (`list`, `read_reals`, `count_reals`, nota empacotamento); §8 (bullet:
+   armazenamento de elementos de lista junto a corpos de string/campos de
+   módulo); §10 (4 linhas); **índice** (6.4 renomeia →
+   `#64-comprimento-indexacao-e-strings`; acrescenta 6.8).
+2. **Rationale** (`xpr-rationale.md`): R3 (heading → "R3. Sete tipos, imutáveis"
+   + parágrafo do Integer 32: promoção exata/2^53, C/SIMD, limite 2^31 aceito,
+   hipótese `size`); R9 (heading → "R9. Listas"; abertura: adiamento encerrado —
+   a spec mudou antes do código, custo de documento e não refatoração; tabela
+   atualizada: operadores = vetorização única, biblioteca = +any/all/apply/
+   apply2/identity/zeros/ones, fora = concat/slice/append/mutação/broadcast;
+   substituir "any/all são obrigatórios" por recursivos + biblioteca); **R9.2
+   NOVO** (Vetorização: regra única recursiva; a recusa do `==` estrutural com o
+   argumento do usuário; unários; NaN; size-mismatch; broadcast recusado);
+   **R9.3 NOVO** (Construtores e I/O: `list` privilegiado; `read_reals`/
+   `count_reals`; código estático × dado dinâmico; empacotamento com
+   bitbuffer/bitslice + terceira categoria; socket adiado; include reafirmado);
+   R12 (tabela: internos +`list`/`read_reals`/`count_reals`, −`at`; biblioteca
+   +any/all/apply/apply2/identity/zeros/ones/at; parágrafo stdlib roadmap);
+   R14 (nota vista/descritor/deep-copy); R15 (linhas novas: `==` estrutural;
+   apply/apply2/any/all como internos; `at` como interno; empacotamento como
+   internos; socket adiado; Integer 64; REFORMULAR linha "slice, `+` entre
+   listas" → concatenação, pois `+` agora É vetorizado); **índice** (+R9.2,
+   +R9.3; âncoras novas de R3/R9).
+3. `make check-docs` (valida índice↔headings ASCII-folded, `R<n>` citados↔definidos,
+   links cruzados; regenerar índices derivando dos headings, nunca à mão).
+4. Fixture `tests/parser/list_literal.x` (positivo, golden pendente, estilo
+   `call_chain.x`: comentário + programa curto). `make test` segue vermelho por
+   construção (TDD).
+5. Atualizar `MEMORY.md`.
+
+### Verificações já feitas (não repetir)
+
+- "64 bits" aparece SÓ em `xpr-specs-pt.md:53` (tabela §1); nenhum outro doc.
+- Âncoras que mudam — `#r3-seis-tipos-imutaveis`, `#r9-listas-adiadas`,
+  `#64-strings` — são citadas apenas nos índices dos próprios arquivos (grep
+  confirmou); nenhum link cruzado as usa.
+- `tools/check-docs.sh`: slugify ASCII-fold; índice completo exigido para
+  headings `N.`, `N.M`, `R<n>`, `C<n>`; links spec↔rationale; `R<n>` citado na
+  spec precisa de heading no rationale. Novos headings (R9.2, R9.3, §6.8) e
+  títulos alterados (R3, R9, 6.4) exigem índices atualizados no mesmo commit.
+## 2026-11-20 (b) — Listas escritas na spec e no rationale
+
+> Sessão de EXECUÇÃO do plano da entrada anterior. 19 edições na spec e 13 no
+> rationale, todas com assert de unicidade de correspondência (falha alto).
+> `make check-docs` verde: spec 27/27, rationale 32/32, 19 R citadas/28 definidas.
+
+### Spec (`xpr-specs-pt.md`) — o que entrou
+
+- §1: "Sete tipos"; `Integer` 32 bits; linha `List`; parágrafo **Homogeneidade**
+  (promoção, `[?]`, notação `[T]` só em diagnóstico).
+- §3: `list_literal` em `literal` + prosa (avaliação E→D; pontuação já existia).
+- §4.2: bloco **Exceção única** do `[]` (não fixa tipo; `[?]` = comprimento
+  zero até lista concreta), com destaque pedido pelo usuário.
+- §4.9: `l[i]` por cópia; compartilhamento interno invisível.
+- §5: linha `List ⊗ List` + bloco **Vetorização** (size-mismatch; por elemento;
+  recursiva; unários; NaN; sem broadcast/`apply`; idioma `all(l1 == l2)`).
+  Corrigida referência `upper`/`lower` de (6.3)→(6.4) — erro pré-existente.
+- §6.1: `input` FECHADO (getline até `\n` consumido; EOF imediato → `""`);
+  formato de lista `[1, 2, 3]` (`, ` como separador; `[]`; recursivo).
+- §6.4: heading → "Comprimento, indexação e strings"; `len` polimórfico
+  (String/List); parágrafo **Indexação** (`x[i]` primitivo; `at` biblioteca).
+- §6.6: +`is_list` (sete predicados).
+- §6.8 NOVO: `list(n)(f)`, `read_reals(path)(k)(n)`, `count_reals(path)` +
+  nota de empacotamento como biblioteca futura.
+- §8: armazenamento de elementos de lista na lista de valores de arena.
+- §10 Execução: +`size-mismatch`, `size-out-of-range`, `allocation-failure`,
+  `file-not-found` (id reusado da análise; precedente `undefined-identifier`).
+- Índice: 6.4 renomeado (`#64-comprimento-indexacao-e-strings`), +6.8.
+
+### Rationale (`xpr-rationale.md`)
+
+- R3 → "Sete tipos, imutáveis" + parágrafo Integer 32 (promoção exata/2^53,
+  C/SIMD, limite 2^31 aceito, hipótese `size`).
+- R9 → "Listas" (adiamento encerrado; custo de documento). R9.1: justifica
+  atualizada, tabela reescrita (`[Integer]`/`[[Real]]` — minúsculas
+  corrigidas; +linhas leitura de dados/biblioteca expandida; fora =
+  concatenação), parágrafo "any/all recursivos e biblioteca".
+- R9.2 NOVO: vetorização por uma regra; recusa do `==` estrutural com o
+  argumento registrado do usuário; "operadores preservam a forma, any/all
+  colapsam"; unários; NaN; size-mismatch (C4); broadcast recusado.
+- R9.3 NOVO: `list` privilegiado (ordem 0..n-1 é definição); read_reals/
+  count_reals como inverso de `import` (código estático × dado dinâmico);
+  cache invisível seguro; empacotamento → terceira categoria de R12; socket
+  adiado com registro.
+- R12: tabela com `list`/`read_reals`/`count_reals` como internos, `at` fora;
+  biblioteca +`apply`/`apply2`/`any`/`all`/`identity`/`zeros`/`ones`/`at`;
+  nota `at`/`len`; parágrafo stdlib roadmap (`xpr-stdlib-spec.md` futuro).
+- R14: nota descritor `{len, ptr}`/deep-copy ao escapar/loops C planos.
+- R15: broadcast reancorado em R9.2; linha "slice/`+`" reformulada para
+  concatenação (`+` é vetorização); +6 linhas (`==` estrutural; apply/any/all
+  internos; `at` interno; empacotamento interno; socket; Integer 64).
+- Índice: R3/R9 renomeados; +R9.2; +R9.3.
+
+### Testes e verificação
+
+- Fixture `tests/parser/list_literal.x` (positivo, golden pendente): `[]`,
+  promoção `[1, 2.0, 3]`, aninhada `[[1,2],[3,4]]`, indexação `e[0]+m[0][1]`.
+- Runner reconhece: `pending parser/list_literal`. `make test` segue vermelho
+  **por construção** (parser pass:0 fail:9 pending:5) — nenhum caso existente
+  mudou de estado.
+
+### Pendências sinalizadas (não executadas)
+
+- `src/xpr.h` → `src/xpr.k` (edição pendente da sessão anterior, spec §10)
+  ainda sem eco em `tests/run_tests.sh` (CATALOG), `tests/README.md` e
+  `docs/diretrizes-erros.md`/`docs/diretrizes-diagnosticos.md` — decidir se o
+  catálogo vira `src/xpr.k` de vez antes da implementação.
+- `xpr-stdlib-spec.md` (terceiro normativo) e diretório de busca em §9: só
+  quando a stdlib começar.

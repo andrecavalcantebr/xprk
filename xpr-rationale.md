@@ -27,7 +27,7 @@ justifica, e os identificadores `R<n>` são referenciados entre documentos.
   - [C4 — Falha cedo](#c4--falha-cedo)
   - [R1.1 O caso `import`: o construto que era um valor disfarçado](#r11-o-caso-import-o-construto-que-era-um-valor-disfarcado)
 - [R2. Tudo é expressão](#r2-tudo-e-expressao)
-- [R3. Seis tipos, imutáveis](#r3-seis-tipos-imutaveis)
+- [R3. Sete tipos, imutáveis](#r3-sete-tipos-imutaveis)
   - [R3.1 Três categorias de nome reservado](#r31-tres-categorias-de-nome-reservado)
   - [R3.2 Notação de terminal no léxico](#r32-notacao-de-terminal-no-lexico)
   - [R3.3 Assimetria de terminação: linha pode acabar no EOF, bloco não](#r33-assimetria-de-terminacao-linha-pode-acabar-no-eof-bloco-nao)
@@ -42,8 +42,10 @@ justifica, e os identificadores `R<n>` são referenciados entre documentos.
   - [R7.3 Avaliação uma vez por arquivo](#r73-avaliacao-uma-vez-por-arquivo)
   - [R7.4 O caminho do módulo é metadado, não campo](#r74-o-caminho-do-modulo-e-metadado-nao-campo)
 - [R8. Structs e tuplas: recusadas por ora](#r8-structs-e-tuplas-recusadas-por-ora)
-- [R9. Listas: adiadas](#r9-listas-adiadas)
+- [R9. Listas](#r9-listas)
   - [R9.1 Lista passa em C1: é valor, logo é expressão](#r91-lista-passa-em-c1-e-valor-logo-e-expressao)
+  - [R9.2 Vetorização: uma regra única, recursiva](#r92-vetorizacao-uma-regra-unica-recursiva)
+  - [R9.3 Construtores e I/O de dados](#r93-construtores-e-io-de-dados)
 - [R10. `native` e o `math.h`](#r10-native-e-o-mathh)
 - [R11. Predicados de tipo](#r11-predicados-de-tipo)
 - [R12. Internos versus biblioteca](#r12-internos-versus-biblioteca)
@@ -132,7 +134,7 @@ na linguagem para sustentar algo que não era expressão:
 | --- | --- | --- |
 | segundo argumento de alias (`include("lib.x","std")`) | o construto não produzia valor, então o nome tinha de ser dado a ele | um construto precisando de parâmetro para se tornar nomeável |
 | `qualified_name` como classe de literal | o acesso `std.range` não derivava de `postfix`, porque não havia valor à esquerda do ponto | gramática paralela só para nomear |
-| "colado no ambiente léxico do chamador" | o texto entrava no ponto do construto, logo herdava o escopo de quem chamou | dependência de estado oculto, o bug clássico de macro sem hygiene |
+| "colado no ambiente léxico do chamador" | o texto entrava no ponto do construto, logo herdava o escopo de quem chamou | dependência de estado oculto, o bug clássico de macro sem higiene |
 
 Nenhum dos três era um problema de **módulos**. Os três eram sintomas de C1
 violado: um construto sem valor precisa que a linguagem lhe dê nome, caminho de
@@ -181,11 +183,12 @@ informação que `for` produz sem precisar de regra nova.
 necessário no futuro (R9): não há como construir uma coleção de `n` elementos
 sem um construtor privilegiado.
 
-## R3. Seis tipos, imutáveis
+## R3. Sete tipos, imutáveis
 
 Justifica: §1, §4.9.
 
-`Integer`, `Real`, `String`, `Boolean`, `Function`, `Module`. Todos imutáveis.
+`Integer`, `Real`, `String`, `Boolean`, `List`, `Function`, `Module`. Todos
+imutáveis.
 
 **Sem `char`.** Strings são sequências de pontos Unicode; um caractere é uma
 string de comprimento 1. Um tipo `char` separado duplicaria toda a
@@ -195,6 +198,15 @@ funcionalidade de string para representar um único ponto.
 análise de tipos tratável com despacho por tag em runtime. Cada tipo novo é uma
 variante em `xpr_Value`, um predicado `is_*`, uma linha na tabela de operadores
 (§5) e uma regra de igualdade — quatro custos por tipo.
+
+**`Integer` é de 32 bits.** O tamanho acompanha a promoção `Integer` → `Real`
+(§1): com 64, inteiros acima de 2^53 perderiam exatidão ao serem promovidos ao
+`Real` de dupla precisão; com 32, a promoção é **sempre exata**. Alinha o valor
+com o `int` de C e as larguras de SIMD. O custo é aceito de olhos abertos:
+contagens limitadas a 2^31 — `count_reals` de um arquivo com mais de ~2,1
+bilhões de valores estoura; ler por camadas segue possível. Hipótese futura
+registrada: um tipo `size`, estilo `size_t`, dedicado a comprimentos, caso essa
+contagem se torne limite real.
 
 **Uma única conversão implícita.** `Integer` → `Real`, e apenas quando um
 operador ou interno espera `Real`. A restrição existe para que o custo de
@@ -492,7 +504,7 @@ em `postfix` (R1, mecanismo existente).
 ### R7.1 O ganho decisivo foi de escopo
 
 Com inclusão textual, um arquivo importado capturaria variáveis do importador —
-dependência de estado oculto, o bug clássico de macro sem hygiene. Com módulo
+dependência de estado oculto, o bug clássico de macro sem higiene. Com módulo
 como valor, o nível superior é avaliado em escopo próprio e **não vê** o
 importador.
 
@@ -555,18 +567,19 @@ regra de acesso a campo já existe. Um literal pode entrar depois como
 já escrito. A proposta que o trouxer deve responder as ~7 decisões acima e
 declarar qual caso de uso as paga.
 
-## R9. Listas: adiadas
+## R9. Listas
 
-Justifica: ausência de listas em §1.
+Justifica: §1 (`List`), §3 (`list_literal`), §5 (vetorização), §6.4, §6.8, §10.
 
-**Razão do adiamento, e não da recusa.** Não é uma recusa: listas entram depois
-de o núcleo estar de pé. O motivo é de ordem de implementação — `xpr_Value` ainda
-não existe, então uma variante no enum custa uma linha hoje e uma refatoração
-transversal depois do codegen.
+**O adiamento terminou.** Nunca foi recusa — era ordem de implementação:
+`xpr_Value` não existia, e uma variante no enum antes do codegen custaria uma
+refatoração transversal. A spec mudou **antes** de qualquer código existir,
+então trazer listas custou documento, não refatoração. O desenho é o da tabela
+de R9.1, com as decisões de detalhe fechadas em R9.2 e R9.3.
 
 ### R9.1 Lista passa em C1: é valor, logo é expressão
 
-Justifica: §1 (ausência de listas), R1 (C1), R2.
+Justifica: §1 (`List`), §3 (`list_literal`), R1 (C1), R2.
 
 A pergunta que C1 obriga a fazer antes de qualquer discussão de sintaxe: **que
 valor uma lista produz?** A resposta é imediata — a própria lista, como `42`
@@ -597,29 +610,96 @@ linha da tabela abaixo: `l[i]` é `index_suffix` que já existe; a árvore de
 operações é expressão; `for` **não** constrói lista (devolve contagem, R2) —
 daí a necessidade de `list(n)(f)`, e não de um construto de laço.
 
-**O desenho acordado**, para quando entrar:
+**O desenho acordado:**
 
 | aspecto | decisão |
 | --- | --- |
 | literal | `[a, b, ...]`, homogêneo, com promoção `Integer` → `Real` |
-| notação de tipo | `[int]`, `[[real]]` — **só em diagnóstico**, não é sintaxe |
-| operadores | elemento a elemento **sempre**; uma regra só, sem broadcast |
+| notação de tipo | `[Integer]`, `[[Real]]` — **só em diagnóstico**, não é sintaxe |
+| operadores | vetorização única, elemento a elemento, recursiva (R9.2) |
 | tamanhos diferentes | `size-mismatch` |
-| indexação | somente leitura, `l[i]` por `postfix` |
-| vazio | `[]` tem tipo `[?]`, compatível com qualquer `[T]`, refinando no primeiro `[T]` concreto |
-| construtor | `list(n)(f)`, único privilegiado |
-| biblioteca | `range`, `map`, `filter`, `fold` |
-| fora | slice, `+` entre listas, append, mutação |
+| indexação | somente leitura, `l[i]` por `postfix` (§6.4) |
+| vazio | `[]` tem tipo `[?]`, compatível com qualquer `[T]`, fixando no primeiro `[T]` concreto (§4.2) |
+| construtor | `list(n)(f)`, único interno privilegiado (R9.3) |
+| leitura de dados | `read_reals`/`count_reals`, internos (R9.3) |
+| biblioteca | `range`, `map`, `filter`, `fold`, `any`, `all`, `apply`, `apply2`, `identity`, `zeros`, `ones`, `at` |
+| fora | concatenação, slice, append, mutação, broadcast |
 
-**`any`/`all` são obrigatórios.** `==` entre listas devolve `[bool]`, e `iif`
-exige `Boolean` (§4.5). Sem agregação, não há como consumir o resultado de uma
-comparação de listas.
+**`any`/`all` são recursivos e biblioteca.** `==` entre listas devolve
+`[Boolean]`, como todo operador (R9.2), e `iif` exige `Boolean` (§4.5): sem
+agregação, não há como consumir o resultado de uma comparação de listas.
+`any`/`all` colapsam a árvore — inclusive aninhada — até `Boolean`, com
+recursão própria porque agregam. A igualdade estrutural é o idioma
+`all(l1 == l2)`.
 
 **`list(n)(f)` é o único interno privilegiado de construção** — interno, não
 construto: é chamada curryficada (R9.1). Não pode ser biblioteca porque o
 literal não constrói `n` elementos em execução e `for` devolve contagem, não
 valores (R2). Sem ele, não há como montar uma lista de tamanho dinâmico — e a
 alternativa seria exatamente o construto de laço que C1 proíbe.
+
+### R9.2 Vetorização: uma regra única, recursiva
+
+Justifica: §5 (bloco Vetorização), §10 (`size-mismatch`).
+
+Todos os operadores de §5 aplicam a listas elemento a elemento por **uma**
+regra: comprimentos iguais, resultado do comprimento comum, cada elemento o
+resultado escalar da tabela. A recursão é da própria regra — o elemento que é
+lista invoca a regra de novo — então `[[1,2]] + [[10,20]]` é `[[11,22]]` sem
+tipo novo: matriz e tensor são listas aninhadas.
+
+**A exceção do `==` estrutural foi recusada.** `==` devolvendo `Boolean` para
+listas manteria a tabela de §5 uniforme e dispensaria `any`/`all` — parece
+simplificação. O argumento decisivo, do usuário: *"abrimos uma exceção para UMA
+operação porque parece que simplifica e acabamos com várias exceções adiante"*.
+Ceder uma vez é aceitar que a forma de cada operador seja negociável; a regra
+única fecha a questão para todos os operadores de uma vez. A igualdade
+estrutural fica como idioma: `all(l1 == l2)`.
+
+**Operadores preservam a forma; `any`/`all` colapsam.** A vetorização é
+recursão da regra geral e devolve a forma dos operandos. `any`/`all` agregam
+até `Boolean` e precisam de recursão própria — por isso são o par inseparável
+da vetorização, e biblioteca (R12).
+
+Unários vetorizam pela mesma regra: `-[1,2]` é `[-1,-2]`, `not [true]` é
+`[false]`. `NaN` compara falso por elemento. Comprimentos diferentes são
+`size-mismatch` — falha cedo (C4), sem regra de preenchimento. **Broadcast é
+recusado**: `2 * [1,2]` é `type-mismatch`; combinar escalar com lista é papel
+de `apply` (biblioteca), e duplicar essa semântica no operador seria a segunda
+regra que a vetorização evita (R15).
+
+### R9.3 Construtores e I/O de dados
+
+Justifica: §6.8, §10 (`size-out-of-range`, `allocation-failure`, `file-not-found`
+em execução).
+
+**`list(n)(f)` é o único interno privilegiado de construção** (R9.1). `f`
+recebe o índice e é avaliado em ordem `0..n-1` — os efeitos acontecem nessa
+ordem, e a ordem é parte da definição, não detalhe de implementação.
+
+**`read_reals`/`count_reals` fazem o caminho inverso de `import`.** Código é
+estático: `import` exige literal (R7.2) porque a análise precisa conhecer todos
+os arquivos para produzir um único `.k`. Dado é dinâmico: `path` é `String`
+computável em execução, o offset é em **elementos** f64 (a aritmética de bytes
+é detalhe do interno), e a falha de arquivo é `file-not-found` **em execução** —
+mesmo id da análise, com o precedente de `undefined-identifier`, que também
+existe nas duas fases com condições distintas.
+
+Nenhum interno escreve em disco, então o arquivo é imutável durante a execução
+— o que torna seguro um cache invisível por `(path, k, n)` (nota de
+implementação, não regra de linguagem).
+
+**Empacotamento é biblioteca, e nasce a terceira categoria.** f32, quantização,
+cabeçalhos: nada disso é regra de linguagem — é código que decodifica bits e
+devolve `Integer`/`Real`. Essa biblioteca precisará das primitivas
+`bitbuffer`/`bitslice` do host, portanto não é XPR puro nem interno da spec: é
+a terceira categoria de R12 — XPR puro / interno da spec / biblioteca em código
+host.
+
+**Socket e rede: adiados com registro.** A linguagem não tem semântica de
+bloqueio nem de tempo; adicionar rede agora decidiria essas semânticas pelo
+flanco. Dados estáticos entram por `import("data.x").campo`; sequência textual
+de stdin é `list(n)(fn(i){ real(input("")); })`.
 
 ## R10. `native` e o `math.h`
 
@@ -672,9 +752,16 @@ da representação interna do valor ou do host, é interno.
 
 | categoria | exemplos | por quê |
 | --- | --- | --- |
-| interno | `print`, `println`, `input`, `len`, `at`, `int`, `exp`, `pow` | acesso a stdio, `math.h` ou à representação de string |
+| interno | `print`, `println`, `input`, `len`, `int`, `exp`, `pow` | acesso a stdio, `math.h` ou à representação de string |
+| interno | `list`, `read_reals`, `count_reals` | construção de lista em execução e leitura de arquivo (R9.3) |
 | interno | `is_*`, `fail`, `string`, `integer`, `real` | acesso à tag de tipo ou ao parser numérico |
-| biblioteca | `map`, `fold`, `filter`, `range`, `abs` | expressável em XPR puro |
+| biblioteca | `map`, `fold`, `filter`, `range`, `abs`, `at`, `apply`, `apply2`, `any`, `all`, `identity`, `zeros`, `ones` | expressável em XPR puro |
+
+`at` desceu para biblioteca: `at = fn(x){ fn(i){ x[i]; }; };` é XPR puro sobre a
+primitiva `x[i]` (§6.4) — a inversão é deliberada, o sufixo é a forma
+primitiva e a função curryficada é açúcar. `len` é polimórfico sobre os tipos
+indexáveis: segue o precedente de `print`/`string`, que aceitam qualquer tipo —
+o valor decide a leitura, e não há sobrecarga a escolher.
 
 **A fronteira é normativa porque justifica recusas.** Ela é o que permite negar
 "adicione `abs` como interno" sem reanálise: `abs` é biblioteca.
@@ -683,6 +770,12 @@ da representação interna do valor ou do host, é interno.
 `XPRPATH`; a busca de `import` é só no diretório do arquivo principal (§9). Por
 isso o que seria biblioteca ainda não tem onde morar. A fronteira fica registrada
 para quando houver — e é ela que decide onde cada nome vai cair.
+
+**Stdlib no roadmap.** A biblioteca padrão morará em `xpr-stdlib-spec.md`,
+terceiro documento normativo de definições (planejado); §9 ganha diretório de
+busca quando ele existir. Com o empacotamento de R9.3 surge também a biblioteca
+escrita em código do host — a terceira categoria: XPR puro / interno da spec /
+biblioteca em código host.
 
 ## R13. `print` de função e módulo
 
@@ -727,6 +820,14 @@ seguro enquanto o armazenamento viver; não é uma alternativa à cópia.
 copiados. R14 explica como a implementação a obtém sem copiar tudo: o que se
 compartilha é armazenamento imutável, e o que se copia é o que escaparia.
 
+**Listas: descritor sobre armazenamento.** Uma lista é uma vista `{len, ptr}`
+sobre armazenamento alocado em arena. A deep-copy acontece quando o valor
+escapa para escopo de vida maior; se o armazenamento já vive na arena de
+destino, copiar o descritor basta. O buffer de capacidade crescente existe
+apenas internamente, antes de a lista imutável existir. As operações
+vetorizadas (§5) viram loops C planos — a vetorização real é trabalho do
+compilador.
+
 ## R15. Registro de recusas
 
 Justifica: o conjunto da especificação. É o artefato de consulta para propostas
@@ -747,10 +848,16 @@ a razão registrada. Sem refutação, a resposta é a da tabela.
 | vínculo tardio de variável livre | quebra recursão após reatribuição (R6) | R6 |
 | `divmod` / retorno múltiplo | `%` cobre; tuplas não pagam (R5, R8) | R5 |
 | tuplas e registros literais | `{` já é bloco; ~7 decisões novas (R8) | R8 |
-| broadcast em operadores de lista | duas regras em vez de uma (R9) | R9 |
-| slice, `+` entre listas, append, mutação | fora do desenho acordado (R9) | R9 |
+| broadcast em operadores de lista | duas regras em vez de uma (R9.2) | R9.2 |
+| concatenação de listas (`+` como junção), slice, append, mutação | fora do desenho: `+` é vetorização (R9.2) | R9.2 |
 | construção de lista sem `list(n)(f)` | `for` devolve contagem e o literal não constrói em runtime (R9, R9.1) | R9.1 |
 | construtor de lista como construto (`list { ... }`, `new l = []`) | viola C1: precisa devolver valor (R9.1) | R9.1 |
+| `==` estrutural entre listas | a exceção de um operador abriria exceções adiante (R9.2) | R9.2 |
+| `apply`/`apply2`/`any`/`all` como internos | expressáveis em XPR puro (R12) | R12 |
+| `at` como interno | `at(x)(i)` é XPR puro sobre a primitiva `x[i]` (§6.4, R12) | R12 |
+| empacotamento (f32, quantização, headers) como internos da spec | biblioteca sustentada por primitivas do host (R9.3) | R9.3 |
+| socket / rede | sem semântica de bloqueio nem de tempo (R9.3) | R9.3 |
+| `Integer` de 64 bits | promoção para `Real` deixaria de ser exata acima de 2^53 (R3) | R3 |
 | `native("...")` | ABI, protocolo de erro, arena (R10) | R10 |
 | `dispatch(tipo, expr)` | `is_*` + `iif` cobre (R11) | R4, R11 |
 | tag de tipo acessível / operador de tipo | `is_*` é suficiente (R11) | R11 |

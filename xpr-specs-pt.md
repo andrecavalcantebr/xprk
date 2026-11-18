@@ -35,10 +35,11 @@ acrescenta regra que aqui não exista.
   - [6.1 Saída e entrada](#61-saida-e-entrada)
   - [6.2 Formatação de números](#62-formatacao-de-numeros)
   - [6.3 Conversões](#63-conversoes)
-  - [6.4 Strings](#64-strings)
+  - [6.4 Comprimento, indexação e strings](#64-comprimento-indexacao-e-strings)
   - [6.5 Matemática](#65-matematica)
   - [6.6 Predicados de tipo](#66-predicados-de-tipo)
   - [6.7 Erros](#67-erros)
+  - [6.8 Listas: construção e leitura de dados](#68-listas-construcao-e-leitura-de-dados)
 - [7. Constantes predefinidas](#7-constantes-predefinidas)
 - [8. Modelo de memória](#8-modelo-de-memoria)
 - [9. Execução: geração Keel e driver](#9-execucao-geracao-keel-e-driver)
@@ -46,20 +47,28 @@ acrescenta regra que aqui não exista.
 
 ## 1. Tipos
 
-Seis tipos. Todos os valores são imutáveis.
+Sete tipos. Todos os valores são imutáveis.
 
 | tipo | descrição |
 | --- | --- |
-| `Integer` | inteiro de 64 bits, sinalizado |
+| `Integer` | inteiro de 32 bits, sinalizado |
 | `Real` | ponto flutuante de dupla precisão, incluindo `NaN`, `INF`, `-INF` |
 | `String` | sequência de pontos Unicode em UTF-8 |
 | `Boolean` | `true` e `false` |
+| `List` | sequência homogênea de valores de um mesmo tipo, de comprimento qualquer |
 | `Function` | código executável mais as capturas congeladas. A aridade (zero ou um parâmetro) **não** faz parte do tipo; é verificada na chamada |
 | `Module` | conjunto finito e congelado de vínculos nome→valor, produzido somente por `import` (4.8) |
 
 Não existe tipo `char`: um caractere é uma `String` de comprimento 1. Não
 existem tuplas, registros nem tipos definidos pelo usuário. A razão desta
 lista fechada está em R3; as recusas correspondentes, em R8 e R15.
+
+**Homogeneidade de `List`.** Os elementos são de um só tipo, sob a única
+promoção da linguagem: `[1, 2.0]` é `[Real]`; `[1, "a"]` é `type-mismatch`. A
+lista vazia `[]` tem tipo `[?]`, compatível com qualquer `[T]` (4.2). Em
+diagnóstico, o tipo de uma lista escreve-se `[T]` — `[Integer]`, `[[Real]]`
+para a aninhada. A notação existe **somente em diagnóstico**: não é sintaxe
+(não há anotação de tipo) e nunca aparece em `print`/`string`.
 
 **Todo tipo novo é valor, e todo valor é expressão.** Um tipo de dado que entre
 na linguagem — inclusive `List` (R9) — segue C1: aparece como literal, é
@@ -227,7 +236,9 @@ atom           = literal
                | try_expr
                | "(" expression ")" ;
 
-literal        = integer | real | string | boolean | identifier ;
+literal        = integer | real | string | boolean
+               | list_literal | identifier ;
+list_literal   = "[" [ expression { "," expression } ] "]" ;
 boolean        = "true" | "false" ;
 
 import_expr    = "import" "(" string ")" ;
@@ -248,6 +259,11 @@ Como `iif_expr` é um `atom`, um `iif` pode receber sufixos diretamente:
 `iif(c, f, g)(x)` é `(iif(c, f, g))(x)` — a função escolhida é chamada com `x`.
 Não é preciso parênteses extras. O mesmo vale para `for`, `try`, blocos e
 `import`.
+
+Um literal de lista `[a, b, c]` é um `atom` e um valor `List`. Os colchetes e a
+vírgula já são pontuação do léxico (2): nenhuma regra léxica nova. As
+expressões internas são avaliadas da esquerda para a direita; homogeneidade e
+o caso `[]` estão em 1 e 4.2.
 
 ## 4. Semântica
 
@@ -291,6 +307,19 @@ a = b = 1.0;   // a e b são Real
 a = 3;         // ok: Integer promovido a Real
 b = "x";       // type-mismatch
 ```
+
+**Exceção única.** Atribuir `[]` **não** fixa o tipo do vínculo: ele fica
+`[?]` e o tipo é fixado pela primeira atribuição de lista concreta. É a
+primeira exceção a uma regra na linguagem — e deliberadamente a única:
+
+```c
+a = [];       // a é [?]
+a = [1, 2];   // agora a é [Integer]
+a = [1.0];    // type-mismatch: a já é [Integer]
+```
+
+Antes de ganhar tipo concreto, um vínculo `[?]` comporta-se como lista de
+comprimento zero.
 
 Uma atribuição é uma expressão e devolve o valor atribuído.
 
@@ -544,6 +573,11 @@ somente leitura: `s[i] = x` é `wrong-assignment`.
 }
 ```
 
+Listas seguem a mesma regra: `l[i]` devolve o elemento **por cópia** — na
+lista aninhada, a lista interna inteira — e indexar é somente leitura
+(`l[i] = x` é `wrong-assignment`). O compartilhamento interno do próximo
+parágrafo é invisível: a garantia é a independência observável entre valores
+copiados.
 O armazenamento interno de um valor imutável pode ser compartilhado; a
 independência observável é que se preserva, não a cópia física. Ver Seção 8.
 
@@ -558,6 +592,7 @@ independência observável é que se preserva, não a cópia física. Ver Seçã
 | `Boolean` ⊗ `Boolean` | `type-mismatch` | `type-mismatch` | `type-mismatch` | `type-mismatch` | `Boolean` | `Boolean` |
 | `Function` | `type-mismatch` | `type-mismatch` | `type-mismatch` | `type-mismatch` | `type-mismatch` | — |
 | `Module` | `type-mismatch` | `type-mismatch` | `type-mismatch` | `type-mismatch` | `type-mismatch` | — |
+| `List` ⊗ `List` | vetorizado (`[T]`) | vetorizado (`[T]`) | vetorizado (`[Integer]`) | vetorizado (`[Boolean]`) | vetorizado (`[Boolean]`) | vetorizado (`[Boolean]`), elemento `Boolean` |
 
 - `/` sobre `Integer` é divisão inteira, truncando em direção a zero
   (`-7 / 3` é `-2`).
@@ -566,9 +601,28 @@ independência observável é que se preserva, não a cópia física. Ver Seçã
   `7 % -3` é `1` (R5).
 - Divisão por zero em `/` ou `%` é `division-by-zero`.
 - Comparação de `String` é sensível a caixa e compara ponto a ponto:
-  `"A" != "a"`. Para ignorar caixa, compare via `upper`/`lower` (6.3).
+  `"A" != "a"`. Para ignorar caixa, compare via `upper`/`lower` (6.4).
 - Toda comparação que envolve `NaN` é falsa.
 - `not` exige `Boolean`; `and` e `or` exigem `Boolean` em ambos os operandos.
+
+**Vetorização.** Todo operador desta tabela aplica a listas elemento a
+elemento, por uma única regra:
+
+- os operandos têm comprimentos iguais — comprimentos diferentes são
+  `size-mismatch` (Seção 10);
+- o resultado tem o comprimento comum; cada elemento é o resultado escalar da
+  tabela para os elementos correspondentes, e as exigências escalares — por
+  exemplo, `and` exige `Boolean` — valem **por elemento**;
+- a regra é **recursiva**: elemento que é lista invoca a mesma regra, então
+  `[[1,2]] + [[10,20]]` é `[[11,22]]`; matriz e tensor são listas aninhadas,
+  sem tipo novo (R9.2);
+- operadores unários vetorizam igualmente: `-[1, 2]` é `[-1, -2]`,
+  `not [true]` é `[false]`;
+- `NaN` compara falso por elemento: `[NaN] == [NaN]` é `[false]`;
+- não há broadcast: `2 * [1, 2]` é `type-mismatch`. Combinar escalar com lista
+  é papel de `apply`, função de biblioteca (R12).
+
+Igualdade estrutural não é operador: o idioma é `all(l1 == l2)` (R9.2).
 
 ## 6. Funções internas
 
@@ -590,12 +644,17 @@ critério que separa interno de biblioteca está em R12.
 - `print(x)` — escreve a representação de `x` no stdout e devolve um `Integer`
   com o número de pontos escritos. Sem nova linha automática.
 - `println(x)` — igual a `print`, acrescentando `\n`, que entra na contagem.
-- `input(prompt)` — escreve `prompt` e lê uma linha do stdin, devolvendo-a como
-  `String`. O comportamento em fim de entrada permanece a especificar.
+- `input(prompt)` — escreve `prompt` e lê uma linha do stdin: até `
+`
+  (consumido, não incluso) ou fim de entrada; fim de entrada imediato devolve
+  `""`. O resultado é `String`.
 
 Strings são escritas sem as aspas delimitadoras. `Boolean` escreve `true` ou
-`false`. `Function` escreve `<function>`; `Module` escreve `<module arquivo.x>`
-com o caminho relativo ao arquivo principal. Esses dois não têm representação
+`false`. `List` escreve `[e1, e2, e3]`: abre `[`, elementos separados por
+vírgula e espaço, fecha `]`; a vazia escreve `[]`; cada elemento segue as
+regras deste parágrafo e de 6.2, recursivamente para listas aninhadas.
+`Function` escreve `<function>`; `Module` escreve `<module arquivo.x>` com o
+caminho relativo ao arquivo principal. Esses dois não têm representação
 textual de conteúdo (R13).
 
 ### 6.2 Formatação de números
@@ -624,15 +683,20 @@ Conversões são explícitas. Não há `bool(val)`: use `s == "true"`.
   para `Real`, o diagnóstico orienta a usar `int`, `round`, `floor` ou `ceil`.
 - `real(s)` — `String` para `Real`. Outro tipo é `type-mismatch`.
 
-### 6.4 Strings
+### 6.4 Comprimento, indexação e strings
 
-- `len(s)` — `Integer` com o comprimento de `s` em pontos. Outro tipo é
-  `type-mismatch`.
-- `at(s)(i)` — `String` de comprimento 1 com o ponto de índice `i` (base 0).
-  `s[i]` é açúcar sintático para `at(s)(i)`. Índice fora de `0..len(s)-1` é
-  `index-out-of-range`; índice não-`Integer` é `type-mismatch`.
+- `len(x)` — `Integer` com o comprimento de `x`: pontos de uma `String`,
+  elementos de uma `List`. Outro tipo é `type-mismatch`.
 - `upper(s)` / `lower(s)` — novas strings com `A`–`Z` ↔ `a`–`z` convertidos e os
   demais pontos preservados. Outro tipo é `type-mismatch`.
+
+**Indexação.** `x[i]` — o `index_suffix` de 3 — é a forma primitiva. Sobre
+`String`, devolve a `String` de comprimento 1 do ponto de índice `i` (base 0).
+Sobre `List`, devolve o elemento `i` **por cópia** (4.9) — na lista aninhada, a
+lista interna inteira. Indexar é somente leitura: `x[i] = e` é
+`wrong-assignment`. Índice fora de `0..len(x)-1` é `index-out-of-range`; índice
+não-`Integer` é `type-mismatch`. A forma curried `at(x)(i)` é biblioteca —
+açúcar em XPR puro sobre `x[i]` (R12).
 
 ### 6.5 Matemática
 
@@ -659,7 +723,7 @@ Conversões são explícitas. Não há `bool(val)`: use `s == "true"`.
 
 ### 6.6 Predicados de tipo
 
-`is_integer(x)`, `is_real(x)`, `is_string(x)`, `is_boolean(x)`,
+`is_integer(x)`, `is_real(x)`, `is_string(x)`, `is_boolean(x)`, `is_list(x)`,
 `is_function(x)`, `is_module(x)` — devolvem `Boolean`. Há exatamente um por tipo
 da linguagem (R11). Não promovem: `is_real(1)` é `false`. São a única forma de
 inspecionar o tipo de um valor em execução, e o que permite escrever funções
@@ -679,6 +743,30 @@ abs = fn(x){
 - `last_error` — `String` global predefinida, somente leitura. Reflete o `try`
   mais recente: `""` em caso de sucesso, o diagnóstico em caso de falha.
   Atribuir a ela é `builtin-redefinition`.
+
+### 6.8 Listas: construção e leitura de dados
+
+- `list(n)(f)` — devolve `[f(0), ..., f(n-1)]`. `f` é avaliada uma vez por
+  elemento, em ordem de índice `0..n-1`, e recebe **o índice** como argumento;
+  efeitos acontecem nessa ordem. `n = 0` devolve `[]`. `n < 0` é
+  `size-out-of-range`; `n` não-`Integer` é `type-mismatch`; `f` que não é
+  `Function` é `not-callable`. A homogeneidade vale sob promoção: `f`
+  polimórfico cujos resultados divirjam sem promoção é `type-mismatch` em
+  execução.
+- `read_reals(path)(k)(n)` — `[Real]` com `n` valores f64 de dupla precisão,
+  little-endian, lidos a partir do **elemento** `k` do arquivo `path` (offset
+  em elementos, não bytes). Equivale a `list(n)(fn(i){ elemento k+i de path; })`.
+  `k < 0` ou `k + n` além do fim é `index-out-of-range`; `n < 0` é
+  `size-out-of-range`; arquivo inexistente é `file-not-found`. `path` é
+  `String` qualquer, computável em execução — código é estático (`import`
+  exige literal, 4.8), dado é dinâmico (R7.2).
+- `count_reals(path)` — `Integer` com o número de valores f64 do arquivo. Ler
+  o arquivo inteiro é o idioma `read_reals(p)(0)(count_reals(p))`.
+
+Nenhum interno escreve em disco: um arquivo aberto por `read_reals`/
+`count_reals` não muda durante a execução. Empacotamento de dados — f32,
+quantização, cabeçalhos — é biblioteca futura, sustentada por primitivas do
+host (R9.3).
 
 ## 7. Constantes predefinidas
 
@@ -706,8 +794,8 @@ Todos os valores são imutáveis, então o tempo de vida de uma alocação é o 
 escopo que a produziu. Isso permite arena, sem coletor de lixo (R14).
 
 - Cada escopo de execução tem sua arena. Valores alocados nele — corpos de
-  string, o conjunto de campos de um módulo — são liberados quando o escopo
-  termina.
+  string, o armazenamento de elementos de lista, o conjunto de campos de um
+  módulo — são liberados quando o escopo termina.
 - Keel oferece `defer`; a liberação da arena de um escopo é agendada na entrada
   dele, de modo que acontece tanto na saída normal quanto na desmontagem por
   erro.
@@ -790,6 +878,10 @@ Todo diagnóstico tem um identificador. A fase indica quando ele é detectado.
 | `not-callable` | aplicação de valor que não é função |
 | `division-by-zero` | `/` ou `%` com divisor zero |
 | `index-out-of-range` | índice fora de `0..len-1` |
+| `size-mismatch` | vetorização de listas com comprimentos diferentes |
+| `size-out-of-range` | tamanho negativo em `list(n)(f)` ou `read_reals(p)(k)(n)` |
+| `allocation-failure` | arena sem espaço na construção de um valor |
+| `file-not-found` | arquivo de `read_reals`/`count_reals` inexistente (id da análise, fase de execução) |
 | `field-not-found` | campo ausente em módulo cujo conjunto não é conhecido estaticamente |
 | `undefined-identifier` | leitura de variável nunca atribuída, por exemplo após `try` que falhou |
 | `call-depth-exceeded` | profundidade de chamada acima de 10.000 |
@@ -799,6 +891,6 @@ Um erro não capturado é relatado uma única vez no stderr. Erros com origem
 incluem nome do arquivo, linha e coluna, com a coluna contada em pontos.
 `call-depth-exceeded` e `step-budget-exceeded` não são capturáveis por `try`.
 
-O catálogo `XPR_DIAG_LIST` em `src/xpr.h` deve espelhar esta lista e é a fonte
+O catálogo `XPR_DIAG_LIST` em `src/xpr.k` deve espelhar esta lista e é a fonte
 dos identificadores usados pelo código gerado. O projeto de propagação e
 limpeza está em [diretrizes-diagnosticos.md](docs/diretrizes-diagnosticos.md).
