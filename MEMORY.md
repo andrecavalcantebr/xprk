@@ -543,3 +543,19 @@ R2), e é por isso que `list(n)(f)` existe.
   (`module xpr.diag;`); o Makefile já cobre (find src -name '*.k' + regra de
   objeto com subdiretório). Usuário ficou de investigar a correção do bug do
   cgen (constante `tags` entre módulos) — reprodutor em tmp/diagprobe/.
+## 2026-11-20 (e) — Pausa deliberada: retomar quando as correções do keel pousarem
+
+- Estado ao fechar: `main` = `origin/main` = `d6e88b7`; `make check-docs`
+  verde (27/27, 32/32); `make test` vermelho por construção; nada compilado
+  além de `src/main.k` e do probe (scratch).
+- **Condição de retomada**: correção, no keel, do bug de baixa de constante
+  `tags` entre módulos (v0.2.0-14; reprodutor/receita no item 2026-11-20 c).
+- Roteiro da retomada: (1) `make keel-sync` num terminal que veja a árvore
+  oficial (~/Apps/keel-0.3.0-dev — a sandbox não vê); (2) recriar e rodar o
+  probe; (3) se verde sem ponte: tirar a nota de versão de
+  diretrizes-diagnosticos §1 e a decisão aberta de §7; (4) começar a
+  implementação por `src/xpr/diag.k` (module xpr.diag; ~28 condições das
+  tabelas de spec §10) e lexer — ordem sugerida em diretrizes-erros §10,
+  lembrando que esse doc ainda tem 3 trechos da era `include` a atualizar.
+- Handoffs antigos cancelados; um único handoff fresco (compartilhado) aponta
+  para este roteiro. Wiki: reference/estado-do-projeto-xprk.md está em dia.
