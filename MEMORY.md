@@ -143,8 +143,8 @@ todas as mudanças são normativas ou de fixtures.
   `wrong_assignment_*`, `empty_program_*`.
 - **`MISSING-IN-CATALOG` é o estado esperado**: `src/xpr.h` ainda não existe, então todo
   `.diag` falha a listagem. `make test` segue vermelho por construção (fase TDD).
-- **Pendência sugerida, não feita**: `tools/check-docs.sh` rodando as duas verificações
-  (índice↔headings; `R<n>` citado na spec existe no rationale) junto de `make tests`.
+- **Pendência sugerida, agora FEITA** (ver seção de 2026-11-19): `tools/check-docs.sh`
+  + `make check-docs`, ligado a `make test`.
 
 ## 2026-11-19 — C1 "tudo é expressão" é o critério PRIMÁRIO de admissão
 
@@ -170,3 +170,80 @@ todas as mudanças são normativas ou de fixtures.
 - **Spec**: §1 ganhou "**Todo tipo novo é valor, e todo valor é expressão**" (inclusive `List`, R9) — nenhum tipo criado só por construto, nenhum precisando de posição sintática própria. §4.6 explicita "`for` **não** constrói coleções; acumular é trabalho de `list(n)(f)` e `fold` (R9, R9.1)".
 - **R15**: 2 linhas novas — "construção de lista sem `list(n)(f)`" (reformulada) e "construtor de lista como construto (`list { ... }`, `new l = []`) ⇒ viola C1".
 - **TOC**: 30 entradas no rationale, 0 quebradas. `make check-docs` verde.
+
+## 2026-11-19 (c) — Estado do repositório e briefing para a sessão de listas
+
+### Onde as coisas estão
+
+- **Commits**: `5c4c530` (rationale normativo, R1..R15, taxonomia do léxico) e
+  `f6dcfeb` (C1 como critério primário, R1.1, R9.1, `check-docs`). `main` = `origin/main`.
+- **Tamanhos**: spec 804 linhas, rationale 771, MEMORY ~250. Índice do rationale com
+  **30 entradas**, 0 âncoras quebradas; spec 26/26.
+- **`make check-docs` verde.** Valida: índice ↔ headings (só títulos numerados `N.`/`N.M`/
+  `R<n>`/`C<n>`; ignora "_Índice_" e prosa), `R<n>` citado ↔ definido, links cruzados
+  entre os dois normativos. **Testado com falhas plantadas** (link quebrado + heading
+  órfão + R inexistente): acusa e sai 1.
+- **Fixtures**: lexer 12, parser 14. `make test` segue **vermelho por construção**
+  (`MISSING-IN-CATALOG`: `src/xpr.h` não existe; e os `POS` estão `pending-golden`).
+  **Nada foi compilado até hoje** — o projeto está inteiro em fase de especificação.
+- **`xpr-specs-pt.md` é a fonte das definições; `xpr-rationale.md` é normativo também**
+  (admissão + desempate + R15). Regra: razão sem regra na spec ⇒ corrija a **spec**.
+
+### Briefing: a próxima sessão é sobre listas
+
+O desenho já acordado está em **R9** (tabela de 9 linhas) e o enquadramento em **R9.1**.
+**C1 não está em discussão** — lista é tipo de dado, logo expressão; aprovada. O que
+falta são decisões de detalhe, e várias delas têm **tensão real** com regras já escritas:
+
+1. **`==` entre listas devolve `[bool]` — e isso fura a §5.** Confirmado na spec: a
+   tabela de operadores dá `Boolean` para `==` em **todos** os tipos (`Function` e
+   `Module` dão `type-mismatch`). Lista seria a **única exceção** da tabela. R9 hoje
+   assume `==` → `[bool]` e por isso declara `any`/`all` "obrigatórios". **A premissa
+   merece reexame**: `==` estrutural (devolvendo `Boolean`) é mais útil, mantém §5
+   intacta e **elimina `any`/`all` como internos** — o que também reduz R12. A
+   contrapartida: `==` estrutural sobre lista aninhada é recursivo, e isso é regra
+   nova (mas uma só, contra duas de `any`+`all` mais a exceção em §5).
+2. **Lista aninhada.** `[[1,2]] == [[1,2]]` sob regra elemento a elemento daria
+   `[[bool]]`, e `any`/`all` não consomem isso diretamente. Se `==` for estrutural,
+   o problema desaparece. **As duas questões 1 e 2 são a mesma.**
+3. **`len` e `at` são String-only (§6.4).** Lista precisa de comprimento e acesso.
+   Opções: (a) tornar `len`/`at` polimórficos — **contraria R11/"sem sobrecarga"**;
+   (b) `at(s)(i)` continua String e lista ganha `l[i]` com regra própria de `index_suffix`;
+   (c) `at` vira biblioteca com `is_*`. **Decidir antes de escrever a seção.**
+4. **`is_list`** é obrigatório por R11 ("um tipo, um predicado"). Entra em §6.6 e na
+   tabela de R11.
+5. **`size-mismatch`** é diagnóstico novo — precisa entrar na tabela de §10 (fase de
+   execução) e a linha de R15 que já o cita.
+6. **Literal heterogêneo**: `[1, 2.0]` → `[Real]` por promoção; `[1, "a"]` → qual id?
+   (`type-mismatch` provavelmente, mas é uma mensagem sobre o *literal*, não sobre um
+   operando — ver se cabe em `diretrizes-diagnosticos.md`).
+7. **`list(n)(f)`**: `f` recebe o índice; e se `n` for negativo ou não-`Integer`?
+   (provavelmente `index-out-of-range` / `type-mismatch`, mas fixar).
+8. **`print`/`string` de lista (R13).** `Function` → `<function>`, `Module` →
+   `<module arq.x>`. Lista precisa de formato: `[1, 2, 3]`? Com que separador, e com que
+   notação de `Real` (usa `fmt_decimals`/`fmt_sigdigits`, §6.2)?
+9. **Cópia e arena (R14).** Lista é valor no escopo; ao escapar do escopo, precisa
+   estar na arena de destino. Mesma regra de §4.9, mas a **lista de elementos** é o
+   primeiro valor de tamanho variável — vale conferir se R14 cobre sem regra nova.
+10. **Notação de tipo `[int]`** existe **só em diagnóstico** (R9). Não pode vazar para
+    `print` de valor nem virar sintaxe.
+
+### Ordem sugerida de trabalho
+
+1. Fechar questões **1+2** (uma decisão: `==` estrutural ou `[bool]`). Elas determinam
+   se `any`/`all` existem como internos — e isso muda R9, R12 e a tabela de §5.
+2. Fechar **3** (`len`/`at` × `l[i]`), porque define se R11 ganha exceção.
+3. Escrever **§1** (tipo `List` na tabela), **§3** (`list_literal` em `atom`), **§5**
+   (linha `List` na tabela de operadores), **§6** (`is_list`, e o que for decidido em 3),
+   **§10** (`size-mismatch`).
+4. Depois é que o rationale ganha a seção nova (R9.2+), nunca antes — a spec é a
+   definição.
+5. Rodar `make check-docs` a cada passo.
+
+### Armadilha a evitar nesta sessão
+
+O erro que já aconteceu duas vezes (com `import` e com a "tabela de despacho" em `for`):
+**desenhar a sintaxe antes de fixar o valor**. Antes de propor `[a, b]`, responder "que
+valor a lista produz e como ele se compõe com `iif`/`fn`/`for`". A segunda armadilha
+específica de listas: **assumir que `for` constrói** — não constrói (devolve contagem,
+R2), e é por isso que `list(n)(f)` existe.
