@@ -1,1 +1,1 @@
-f = fn(x: Integer){ x + 1; };
+{ f = fn(x: Integer){ x + 1; }; }

@@ -163,7 +163,7 @@ pedidos; é que o valor da feature não foi identificado.
 
 Justifica: §3 (gramática), §4 (semântica), especialmente §4.6.
 
-Um programa é uma expressão e cada construto devolve valor. Isso elimina a
+Um programa é uma expressão e cada construto devolve valor: toda unidade — todo arquivo `.x` — é um bloco (§3), e bloco é expressão. Isso elimina a
 distinção comando/expressão: blocos, `iif`, `for`, `import` e `fn` compartilham
 a mesma regra de composição, e não há uma segunda gramática para "instruções".
 
@@ -485,7 +485,7 @@ sem caso de uso.
 
 Justifica: §1 (`Module`), §4.8, §9.
 
-A primeira versão tinha `include`, com semântica de `#include`: o texto entrava
+A primeira versão tinha `include`, com semântica de `#include` do C: o texto entrava
 no ponto do construto. Evoluiu por três correções registradas em ordem:
 
 1. **Namespace por prefixo** — `include("stdlib.x")` expondo `stdlib.range`.
@@ -546,7 +546,7 @@ parser desambigua:
 ```
 
 **As saídas custam.** `record{...}` exige keyword nova; `(f: 1, g: 2)` exige `:`
-novo e retira `(` da função de agrupamento puro; `<<f: 1>>` inventa delimitador.
+novo e retira `(` da função de agrupamento puro; `<<f: 1, g: 2>>` inventa delimitador.
 
 **O custo em decisões normativas.** Cada saída traz ~7 decisões novas:
 igualdade estrutural (é estrutural ou por identidade? a ordem importa? é

@@ -1,1 +1,1 @@
-f = fn: Boolean(s){ s == "x"; };
+{ f = fn: Boolean(s){ s == "x"; }; }

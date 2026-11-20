@@ -12,3 +12,4 @@ gen/
 # Project-local scratch space (clean with: make cleantmp)
 tmp/*
 !tmp/.gitkeep
+keel-achados.md

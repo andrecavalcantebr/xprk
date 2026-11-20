@@ -1,7 +1,6 @@
 # Especificação do XPR
 
-XPR é uma linguagem orientada a expressões: cada construto devolve um valor. Um
-programa é uma expressão. Não há comandos.
+XPR é uma linguagem orientada a expressões: tudo nela são expressões, então cada construto devolve um valor. Todo arquivo `.x` é uma **unidade**, e toda unidade é um bloco (3) — também ele uma expressão. A raiz é executada pelo driver (9); a importada é congelada como `Module` (4.8).
 
 **Não existe construto sem valor.** Toda forma sintática da linguagem — `fn`,
 `iif`, `for`, `try`, `import`, bloco — é uma expressão e produz valor. Uma
@@ -207,8 +206,10 @@ isso chegar ao EOF sem o `*/` é `unterminated-comment`, erro da fase de anális
 ## 3. Gramática
 
 ```ebnf
-program        = expression ;
+unit           = block ;
+block          = "{" { statement } "}" ;
 
+statement      = expression ";" ;
 expression     = assignment | fn_def | logical_or | block ;
 
 assignment     = identifier "=" expression ;
@@ -230,10 +231,10 @@ field_suffix   = "." identifier ;
 
 atom           = literal
                | import_expr
-               | block
                | iif_expr
                | for_expr
                | try_expr
+               | block
                | "(" expression ")" ;
 
 literal        = integer | real | string | boolean
@@ -242,9 +243,6 @@ list_literal   = "[" [ expression { "," expression } ] "]" ;
 boolean        = "true" | "false" ;
 
 import_expr    = "import" "(" string ")" ;
-
-block          = "{" { statement } "}" ;
-statement      = expression ";" ;
 iif_expr       = "iif" "(" expression "," expression "," expression ")" ;
 for_expr       = "for" "(" expression ";" expression ";" expression ")" expression ;
 try_expr       = "try" "(" expression [ "," expression ] ")" ;
@@ -252,8 +250,11 @@ try_expr       = "try" "(" expression [ "," expression ] ")" ;
 
 Aplicação, indexação e acesso a campo são sufixos repetíveis e aninham à
 esquerda: `f(x)(y)` é `(f(x))(y)`, `s[i][j]` é `(s[i])[j]` e `m.a.b` é `(m.a).b`.
-O programa é **uma única expressão**; qualquer token restante depois dela é
-`syntax-error`.
+A unidade é **um bloco**: o arquivo abre em `{` e fecha em `}`. Qualquer token
+restante depois do `}` — inclusive `;` — é `syntax-error`; a origem sem nenhuma
+expressão é `empty-program` (10), verificada antes de se exigir o `{`. A mesma
+forma serve aos dois papéis: a unidade **raiz**, entregue ao driver (9), e a
+**importada**, cujos vínculos do bloco viram os campos de um `Module` (4.8).
 
 Como `iif_expr` é um `atom`, um `iif` pode receber sufixos diretamente:
 `iif(c, f, g)(x)` é `(iif(c, f, g))(x)` — a função escolhida é chamada com `x`.
@@ -272,8 +273,8 @@ o caso `[]` estão em 1 e 4.2.
 Do menor para o maior vínculo, na ordem em que a gramática agrupa:
 
 ```
-or  <  and  <  not  <  == !=  <  < <= > >=  <  + -  <  * / %  <  unário + -
-    <  postfix (chamada, índice, campo)
+'or'  <  'and'  <  'not'  <  '==' '!='  <  '< <= > >='  <  '+ -'  
+    <  '* / %'  <  'unário + -' <  postfix (chamada, índice, campo)
 ```
 
 - Operandos binários avaliam da esquerda para a direita.
@@ -289,7 +290,7 @@ Um erro de avaliação aborta a avaliação em curso, a menos que capturado por
 
 ### 4.2 Escopo e atribuição
 
-Blocos definem escopo. Um programa roda em um único escopo global.
+Blocos definem escopo. Cada unidade roda em um único escopo global: o do seu bloco.
 
 - A atribuição a um nome já visível atualiza o vínculo mais próximo.
 - A atribuição a um nome não definido cria o vínculo no escopo atual.
@@ -303,9 +304,11 @@ O tipo é fixado na primeira atribuição. Reatribuir valor de outro tipo é
 `Real`:
 
 ```c
-a = b = 1.0;   // a e b são Real
-a = 3;         // ok: Integer promovido a Real
-b = "x";       // type-mismatch
+{
+    a = b = 1.0;   // a e b são Real
+    a = 3;         // ok: Integer promovido a Real
+    b = "x";       // type-mismatch
+}
 ```
 
 **Exceção única.** Atribuir `[]` **não** fixa o tipo do vínculo: ele fica
@@ -313,9 +316,11 @@ b = "x";       // type-mismatch
 primeira exceção a uma regra na linguagem — e deliberadamente a única:
 
 ```c
-a = [];       // a é [?]
-a = [1, 2];   // agora a é [Integer]
-a = [1.0];    // type-mismatch: a já é [Integer]
+{
+    a = [];       // a é [?]
+    a = [1, 2];   // agora a é [Integer]
+    a = [1.0];    // type-mismatch: a já é [Integer]
+}
 ```
 
 Antes de ganhar tipo concreto, um vínculo `[?]` comporta-se como lista de
@@ -377,12 +382,14 @@ variáveis livres, congelados por cópia no momento da definição. Reatribuir u
 variável depois nunca altera uma closure que já a capturou.
 
 ```c
-c = 9;
-f9  = fn(x){ x + c; };
-f19 = fn(x){ x + c; };
-c = 19;                    // não altera f9 nem f19
-f19 = fn(x){ x + c; };
-f19(1);                    // 20
+{
+    c = 9;
+    f9  = fn(x){ x + c; };
+    f19 = fn(x){ x + c; };
+    c = 19;                    // não altera f9 nem f19
+    f19 = fn(x){ x + c; };
+    f19(1);                    // 20
+}
 ```
 
 **Aritmética da aridade.** Chamar com aridade incompatível é `arity-mismatch`:
@@ -398,9 +405,11 @@ válidos. Funções são valores e participam de qualquer expressão.
 qualquer tipo, escolher **qual função** usar é uma expressão comum:
 
 ```c
-fmt = iif(modo == "csv", fmt_csv, fmt_json);   // fmt é Function
-fmt(dados);                                     // chama a escolhida
-iif(n > 0, abs, neg)(x);                        // idem, sem vínculo intermediário
+{
+    fmt = iif(modo == "csv", fmt_csv, fmt_json);   // fmt é Function
+    fmt(dados);                                     // chama a escolhida
+    iif(n > 0, abs, neg)(x);                        // idem, sem vínculo intermediário
+}
 ```
 
 Isso não é um construto novo: é `iif` (§4.5) composto com o sufixo de chamada
@@ -429,9 +438,11 @@ possível, porque o corpo de `for` é descartado e o resultado do loop é a cont
 de iterações (§4.6, R2):
 
 ```c
-ops = for(i = 0; i < n; i = i + 1){ ops = iif(..., corpo[i], ops); };
-// ops passa a ser um Integer: a contagem. As atribuições internas morreram no
-// escopo do corpo.
+{
+    ops = for(i = 0; i < n; i = i + 1){ ops = iif(..., corpo[i], ops); };
+    // ops passa a ser um Integer: a contagem. As atribuições internas morreram no
+    // escopo do corpo.
+}
 ```
 
 Montar a tabela exige `iif` aninhado (acima) ou, no futuro, listas e
@@ -441,8 +452,10 @@ Montar a tabela exige `iif` aninhado (acima) ou, no futuro, listas e
 `undefined-identifier` já na definição, sem executar o corpo:
 
 ```c
-f = fn(x){ print(y); y = x; };   // undefined-identifier
-f = fn(x){ y = x; print(y); };   // ok
+{
+    f = fn(x){ print(y); y = x; };   // undefined-identifier
+    f = fn(x){ y = x; print(y); };   // ok
+}
 ```
 
 **Atribuição a captura.** Atribuir a um nome capturado é `lvalue-in-closure`.
@@ -513,28 +526,39 @@ com status diferente de zero.
 `import` é uma expressão e produz um valor `Module`.
 
 ```c
-std = import("stdlib.x");   // std nomeia o módulo
-std.range(2);               // acesso a campo, depois chamada
+{
+    std = import("stdlib.x");   // std nomeia o módulo
+    std.range(2);               // acesso a campo, depois chamada
+}
 ```
 
 O argumento deve ser um **literal de `String`**. Não existe importação
 dinâmica: um argumento variável é `import-not-literal` (R7.2).
 
-**O valor.** Um `Module` é o conjunto dos vínculos definidos no nível superior do
-arquivo importado, congelado. Não há literal de módulo, atribuição a campo,
-indexação nem remoção. `m.nome` lê um campo; nome ausente é `field-not-found`.
+**O valor.** Um `Module` é o conjunto dos vínculos definidos no bloco que forma
+a unidade importada — o escopo global dela —, congelado. Vínculos de blocos e
+corpos de função aninhados não são campos: escopo interno não vaza (4.2). Não
+há literal de módulo, atribuição a campo, indexação nem remoção. `m.nome` lê um
+campo; nome ausente é `field-not-found`.
 
-**Dois tempos.** Na **análise**, o arquivo é localizado, lido e analisado,
+**Dois tempos.** Na **análise**, a unidade é localizada, lida e analisada,
 recursivamente para seus próprios imports; `file-not-found` e
-`recursive-import` são erros desta fase. Na **execução**, o nível superior do
-módulo é avaliado no ponto do `import`, e o resultado é o valor.
+`recursive-import` são erros desta fase. Na **execução**, o bloco da unidade
+importada é avaliado no ponto do `import`, e o módulo congelado é o valor — o
+valor do bloco em si, a última expressão (4.3), é descartado.
 
-**Escopo.** O nível superior do arquivo é avaliado em escopo próprio, que contém
+**Escopo.** A unidade importada é avaliada no escopo do seu bloco, que contém
 os internos (Seção 6), as constantes (Seção 7), os vínculos que o próprio
-arquivo define e os módulos que ele mesmo importa. O módulo **não vê** o escopo
+bloco define e os módulos que ele mesmo importa. O módulo **não vê** o escopo
 do importador (R7.1).
 
-**Unicidade.** O nível superior é avaliado uma vez por arquivo, na primeira vez
+**Vazio.** Uma unidade importada cujo bloco não define nenhum vínculo é
+`empty-module`, erro de análise — importar pelos efeitos não existe; quem quer
+código executado na carga expõe `init = fn(){ ... };` e o importador chama
+`import("lib.x").init();`. (O bloco literal vazio `{}` já é `empty-block`,
+4.3, antes desta verificação.)
+
+**Unicidade.** A unidade é avaliada uma vez por arquivo, na primeira vez
 que um `import` daquele arquivo é alcançado; as ocorrências seguintes
 reaproveitam o mesmo valor. Importar de novo não reavalia nem cria outro módulo.
 
@@ -547,13 +571,15 @@ sobre `Module` são `type-mismatch`. `is_module` (6.6) é a única forma de
 reconhecê-lo.
 
 ```c
-use_mod(import("mathx.x"));          // argumento
-mk = fn(){ import("mathx.x"); };     // devolvido
-mk().step(1);                        // mesmo módulo de antes
+{
+    use_mod(import("mathx.x"));          // argumento
+    mk = fn(){ import("mathx.x"); };     // devolvido
+    mk().step(1);                        // mesmo módulo de antes
+}
 ```
 
 **Nome no diagnóstico.** Um módulo não tem nome: é impresso como
-`<module arquivo.x>`, com o caminho relativo ao arquivo principal.
+`<module arquivo.x>`, com o caminho relativo à unidade raiz.
 
 ### 4.9 Valores e cópias
 
@@ -632,7 +658,8 @@ Os internos são símbolos globais predefinidos. Distinguem-se três classes:
   deles é `builtin-redefinition`. Podem ser passados como argumento
   (`use_func(print)`).
 - **Variáveis predefinidas** — `fmt_decimals` e `fmt_sigdigits` são **graváveis**
-  (6.2); `last_error` é somente leitura (6.7).
+  (6.2); `last_error` é somente leitura (6.7); `args` é somente leitura,
+  lista de `String` nunca vazia (9).
 - **Constantes predefinidas** — as booleanas `true`/`false` e as matemáticas da
   Seção 7. São somente leitura; as booleanas têm token próprio no léxico (§2).
 
@@ -654,7 +681,7 @@ Strings são escritas sem as aspas delimitadoras. `Boolean` escreve `true` ou
 vírgula e espaço, fecha `]`; a vazia escreve `[]`; cada elemento segue as
 regras deste parágrafo e de 6.2, recursivamente para listas aninhadas.
 `Function` escreve `<function>`; `Module` escreve `<module arquivo.x>` com o
-caminho relativo ao arquivo principal. Esses dois não têm representação
+caminho relativo à unidade raiz. Esses dois não têm representação
 textual de conteúdo (R13).
 
 ### 6.2 Formatação de números
@@ -824,13 +851,13 @@ que nunca são chamados. Ver Seção 10.
 
 ### Unidade de entrada
 
-O driver recebe **um único arquivo `.x`**. Todo o resto entra por
+O driver recebe **um único arquivo `.x`** — a **unidade raiz**. Todo o resto entra por
 `import("arquivo.x")`, e como todo `import` tem argumento literal, a análise
 conhece de antemão o conjunto completo de arquivos. O programa inteiro vira
 **um único arquivo `.k`** na pasta atual. Não há geração de múltiplos arquivos
 nem linkedição separada.
 
-`import` procura o arquivo apenas no diretório do arquivo principal. Não há
+`import` procura o arquivo apenas no diretório da unidade raiz. Não há
 busca em `XPRPATH` nem diretório de biblioteca padrão.
 
 ### Driver
@@ -843,9 +870,16 @@ busca em `XPRPATH` nem diretório de biblioteca padrão.
 | `xpr --gen-dump <arquivo>` | interrompe na geração e despeja o Keel produzido |
 | `xpr -h`, `xpr --help` | ajuda; exibe também a versão do transpilador |
 
-O programa compilado **não** imprime automaticamente o valor da expressão
-final. A saída é solicitada explicitamente por `print`/`println`. Status de
-saída é zero em sucesso e diferente de zero em qualquer falha.
+O programa compilado **não** imprime automaticamente o valor do bloco da
+unidade raiz — o valor é descartado. A saída é solicitada explicitamente por
+`print`/`println`. Os argumentos da linha de comando chegam pela variável
+predefinida `args` (6): lista de `String` na forma do host — `args[0]` é o
+nome do executável e os demais, os argumentos na ordem em que foram dados.
+A lista nunca é vazia: há sempre o elemento `0`, e o tipo é sempre `[String]`,
+nunca `[?]` (1). Cada elemento é a `String` crua da linha de comando — números
+incluídos —; converter é explícito, com `integer`/`real` (6.3), e a quantidade
+de argumentos é `len(args) - 1`. Atribuir a `args` é `builtin-redefinition`.
+Status de saída é zero em sucesso e diferente de zero em qualquer falha.
 
 ## 10. Diagnósticos
 
@@ -857,13 +891,14 @@ Todo diagnóstico tem um identificador. A fase indica quando ele é detectado.
 | --- | --- |
 | `unterminated-string` | literal de `String` sem a aspa de fechamento |
 | `unterminated-comment` | comentário de bloco sem o `*/` de fechamento |
-| `syntax-error` | o texto não forma uma expressão válida, ou sobra token depois dela |
+| `syntax-error` | o texto não forma uma unidade válida — um bloco —, ou sobra token depois dela |
 | `empty-program` | a origem não contém nenhuma expressão |
 | `empty-block` | bloco `{}` sem expressões |
+| `empty-module` | unidade importada cujo bloco não define nenhum vínculo |
 | `wrong-assignment` | alvo de atribuição não é identificador (literal, constante booleana, chamada, índice, campo) |
 | `undefined-identifier` | nome usado antes de qualquer definição, inclusive variável livre de função |
 | `lvalue-in-closure` | atribuição a nome capturado por closure |
-| `builtin-redefinition` | atribuição a interno, constante ou `last_error` |
+| `builtin-redefinition` | atribuição a interno, constante, `last_error` ou `args` |
 | `import-not-literal` | argumento de `import` não é literal de `String` |
 | `file-not-found` | arquivo de `import` inexistente |
 | `recursive-import` | ciclo de importação |

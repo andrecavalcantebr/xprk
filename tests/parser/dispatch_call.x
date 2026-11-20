@@ -1,1 +1,1 @@
-iif(x == "myfunc", myfunc, otherfunc)("hello");
+{ iif(x == "myfunc", myfunc, otherfunc)("hello"); }

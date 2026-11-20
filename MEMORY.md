@@ -559,3 +559,140 @@ R2), e é por isso que `list(n)(f)` existe.
   lembrando que esse doc ainda tem 3 trechos da era `include` a atualizar.
 - Handoffs antigos cancelados; um único handoff fresco (compartilhado) aponta
   para este roteiro. Wiki: reference/estado-do-projeto-xprk.md está em dia.
+
+## 2026-11-20 (f) — `unit = block`: unidade unifica programa e módulo; `args` do host
+
+- **Decisão central (aceite do usuário)**: todo arquivo `.x` é uma **unidade** e
+  toda unidade é um bloco — `unit = block ;` substitui `program = expression ;`
+  no §3. `program` e `module` deixam de ser formas gramaticais: são **papéis** —
+  unidade **raiz** (a entregue ao driver, executada topo a fim, valor do bloco
+  descartado, §9) e unidade **importada** (avaliada no ponto do `import`,
+  vínculos do escopo do bloco congelados como campos do `Module`, §4.8).
+  `Module` fica reservado ao tipo/valor; "arquivo principal" renomeado para
+  "unidade raiz" (§4.8, §6.1, §9).
+- **§4.8 nessa terminologia**: campos = vínculos do bloco da unidade importada
+  (blocos/corpos aninhados não são campos — escopo interno não vaza, 4.2); valor
+  do bloco descartado; parágrafo novo **Vazio** → `empty-module` (análise;
+  critério "nenhum vínculo definido", não "nenhum statement"; `{}` em si já é
+  `empty-block` antes); import-por-efeito não existe — idioma `init = fn(){...};`
+  + `import("lib.x").init();`. `empty-module` entrou na tabela de Análise do §10;
+  `syntax-error` reformulada para unidade; `builtin-redefinition` ganhou `args`.
+- **`args` (novo)**: variável predefinida somente leitura (mesma classe de
+  `last_error`, §6; descrita no §9) com os argumentos do SO **na forma do host**:
+  `args[0]` = nome do executável, demais = argumentos na ordem dada — a lista
+  **nunca é vazia**, o tipo é sempre `[String]`, nunca `[?]` (1); números chegam
+  como `String` crua, conversão explícita (`integer`/`real`, 6.3); quantidade de
+  argumentos = `len(args) - 1`. Sem `main` mágico: ponto de entrada é o topo do
+  bloco da raiz.
+- **Sem símbolos privados por ora**: tudo é público; privacidade estrutural
+  existe pelo escopo léxico (vínculo de bloco/fn aninhado não vira campo —
+  padrão factory com closure, §4.4).
+- **Fixtures**: 11 casos de `tests/parser/` convertidos à forma unidade-bloco
+  (mains multi-statement, `subtract_left` → `{ 2 - 3; }`, `wrong_assignment_*`,
+  `annotated_*`); `module_value.x` com comentários spec 3/4.8. `empty_program_*`
+  inalterados (origem sem expressões segue `empty-program`, verificado antes de
+  se exigir o `{`).
+- **Rationale**: R2 registra a decisão ("toda unidade é um bloco, e bloco é
+  expressão"). `make check-docs` verde (27/27, 32/32). Pendências: `src/xpr/diag.k`
+  (catálogo — `--list` do parser segue MISSING-IN-CATALOG; tests/README.md cita
+  "seis" negativos, hoje são nove); fixture de `empty-module` exige runner com
+  arquivo-acompanhante (infra inexistente). Nada compilado — rodada normativa.
+
+## 2026-11-20 (g) — Carga mínima: `src/xpr/diag.k` + `main.k` executando; bug cgen `tags` >= 17
+
+- **Bug novo do cgen 0.3.0 (vendored, commit `v0.3.0`, 2026-11-19)**: lista
+  `tags` com 17+ itens nao parseia — `malformed or truncated declaration
+  [unexpected-token]` apontando o inicio da declaracao (mensagem enganosa).
+  Fronteira empirica: 16 ok / 17 falha, independente de nomes, valores,
+  layout, virgula final ou comentario interno (varredura em `tmp/bugtags/`;
+  repro permanente `tmp/bugtags/rep/t.k`). Documentado em `keel-achados.md` (raiz)
+  secao 1 — a reportar ao keel.
+- **Workaround no catalogo**: dois conjuntos com <=16 itens — `DiagA` (OK +
+  14 de analise; 15) e `DiagR` (10 de execucao), faixa numerica contigua
+  0..24; `DiagEntry.code` como `i32` (que ja era o transporte por
+  diretrizes). Fundir de volta em um conjunto quando o keel corrigir.
+- **`src/xpr/diag.k`**: catalogo da spec 10 como fonte unica — 25 linhas
+  (OK + 24 ids; `file-not-found`/`field-not-found`/`undefined-identifier`
+  com uma linha cada, condicoes das duas fases), campos
+  code/id/sev/msg/hint (hint 0 por ora), `COUNT` constexpr (cruza modulos —
+  ponte golden 007), `entry()` busca linear, `severity()` le da linha (match
+  nao substitui o dado). Mensagens em portugues sem acentos (decisao do
+  rascunho do probe; idioma final e decisao aberta das diretrizes secao 7).
+- **`src/main.k`**: dispatch CLI — `-h|--help` (0), `--diag-list` imprime o
+  catalogo (0), demais `not implemented yet` no stderr (2, diretrizes
+  secao 4); sem argumentos -> help + 2. Import `xpr.diag as diag types` SEM
+  constantes tags no main (baixa entre modulos segue quebrada — nota de
+  versao das diretrizes secao 1): usa tabela/funcoes/tipos/COUNT apenas.
+- **Estado**: `make` verde (warning cosmético do cgen: static re-declarada
+  em `main_main.c`); `run_tests --suite all --list` **ok pela primeira vez**
+  (todos os NEG resolvem no catalogo); `make test` vermelho por design
+  (exit 2 do binario nos casos — dumps nao implementados).
+  `tests/README.md` atualizado para o estado atual da listagem.
+- Pendencias: reportar o bug ao keel upstream; implementacao segue pelo
+  lexer (diretrizes-erros secao 10).
+
+## 2026-11-20 (h) — keel corrigiu `tags` >= 17; catalogo fundido de volta
+
+- **Sync do vendored** (autorizado, fora da sandbox): `tools/keel-tool.sh sync`
+  trouxe `v0.3.0` -> `v0.3.0-5-g852d24f` (cgen 0.4.0-dev, 2026-11-20);
+  `keel-check` ok. Repro dos 17 tags (`tmp/bugtags/rep/t.k`) agora passa.
+- **keel-achados.md secao 1 marcada corrigida**: limite novo e 128 constantes
+  por conjunto; 129+ rejeita com `tags-limit-exceeded`, mensagem clara e
+  posicao correta (repro `tmp/bugtags/lim129/t.k`). O bug antigo (17+ itens ->
+  `malformed or truncated declaration` enganoso) nao existe mais.
+- **`src/xpr/diag.k` fundido de volta a forma canonica**: `DiagA`+`DiagR`
+  voltaram a ser um unico `tags Diag` (OK + 24, faixa 0..24); campo
+  `DiagEntry.code` voltou a ser `Diag` (identidade de tipo, diretrizes secao
+  1); cast `(i32)` na comparacao de `entry()` evita `-Wsign-compare` com o
+  transporte i32. `make` verde com cgen 0.4.0-dev; `--diag-list` inalterado
+  (25 linhas, mesmos ids/severidades/mensagens).
+- `make test` segue vermelho por design (lexer/`--lex-dump` pendentes).
+
+## 2026-11-20 (i) — Catálogo sem números: sequência posicional + sentinela LAST_DIAGNOSTIC
+
+- **Nenhum valor explícito nos tags** do `src/xpr/diag.k` — o cgen 0.4.0-dev
+  exige valores all-or-none, e o "none" é o que interessa: `OK` âncora 0 por
+  posição e a lista segue sequencial. Elimina a dessincronia lista↔números ao
+  inserir/remover diagnósticos.
+- **Sentinela `LAST_DIAGNOSTIC`** após o último código real: vale o total por
+  posição. `COUNT` virou `pub constexpr i32 COUNT = LAST_DIAGNOSTIC;`
+  (derivado, nunca escrito à mão) e a tabela dimensionou pelo sentinela:
+  `pub array DiagEntry table[LAST_DIAGNOSTIC]` — o header gerado sai
+  `extern xpr_diag_DiagEntry xpr_diag_table[xpr_diag_Diag_LAST_DIAGNOSTIC]`.
+  Lista, contador e dimensão derivam de um único lugar.
+- **Validações no cgen antes de aplicar** (`tmp/bugtags/{implicit2,sentinel2,
+  derived2,dim2}`): enum gerado sequencial puro; `constexpr` derivado de tag
+  do próprio módulo compila; tag como dimensão de array cruza no header.
+- **`main.k`**: `diag_list` pula `e == 0` — se uma edição futura deixar a
+  tabela atrás da lista, o `--diag-list` não imprime "(null)".
+- Política registrada no comentário do conjunto: acréscimos no fim, antes do
+  sentinela (inserir no meio renumera os seguintes; goldens imprimem o id).
+- `make` verde; `--diag-list` byte a byte idêntico (`tmp/diag-before.txt` vs
+  `diag-after.txt`, 25 linhas). `make test` segue vermelho por design.
+
+## 2026-11-20 (j) — COUNT (constexpr) antes da tabela; dimensão COUNT; zero-fill reportado
+
+- `COUNT` segue `pub constexpr i32` (semântica pública de quantidade) e passou a
+  ser declarado ANTES da tabela: `pub array DiagEntry table[COUNT]` — o header
+  sai `extern xpr_diag_DiagEntry xpr_diag_table[xpr_diag_COUNT]`. Constexpr C23
+  como dimensão validado no gcc 13/c2x (probe `tmp/bugtags/countdim`).
+- O caso "tag sem linha na tabela" NÃO é warning do gcc (zero-fill silencioso,
+  confirmado no probe). Então o `--diag-list` parou de pular em silêncio: avisa
+  no stderr `xpr: diag: row N missing (table behind the tags list)`.
+- Provado ao vivo: `FAKE_NEW_ONE` inserido sem linha → build limpo, 25 linhas
+  normais no stdout + aviso no stderr; restaurado, `make` verde, `--diag-list`
+  byte a byte idêntico. Redes dos dois lados: linha a mais → warning do gcc
+  (excess elements); linha a menos → aviso do `--diag-list`.
+
+## 2026-11-20 (k) — tmp/ confirmada scratch; cleantmp aplicado
+
+- Confirmado: `tmp/` já coberta pelo `.gitignore` (`tmp/*` + `!tmp/.gitkeep`);
+  único arquivo trackeado é o `.gitkeep` (por design). `make cleantmp`
+  (tools/clean-tmp.sh) faz wipe total exceto `.gitkeep`.
+- `keel-achados.md` tornado autocontido ANTES do wipe (repro inline; receita
+  do lim129 — `pub tags L [` com 129 tags `T000..T128` — embutida): nenhuma
+  referência viva a arquivos de tmp/.
+- Apagados: 40 outputs do runner (`test-*`), variantes da bisseção (`tA`-`tD`,
+  `tBgen`), `diagprobe` histórico (bug corrigido; repro preservado em
+  docs/achados/), `bugtags` (conteúdo inline no achado), artefatos de diff
+  (`diag-*`, `warn.err`). `tmp/` volta a só `.gitkeep`.

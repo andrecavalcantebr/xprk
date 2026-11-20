@@ -27,9 +27,10 @@ bash tests/run_tests.sh --suite runtime
 
 `--list` confere catálogos e arquivos, sem iniciar o XPR e sem criar temporários.
 Uma expectativa negativa ausente do catálogo também faz a listagem falhar.
-No estado atual, os seis casos do parser com `empty-program` ou
-`wrong-assignment` impedem a execução/listagem completa de `parser` e `all`.
-Eles não são ignorados nem substituídos por outros erros. Use `--case` para
+No estado atual o catálogo `src/xpr/diag.k` existe e a listagem completa de
+`parser` e `all` passa — todos os `.diag` resolvem. A execução segue vermelha
+por design: o binário ainda não implementa `--lex-dump`/`--parse-dump`
+(`make test` é o TDD vermelho pré-implementação). Use `--case` para
 selecionar um caso cuja definição já exista; somente o diagnóstico selecionado
 é resolvido, mantendo as verificações de integridade dos arquivos da suíte.
 A suíte padrão continua sendo lexer. Use `--binary /caminho/xpr` ou `XPR` para
